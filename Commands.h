@@ -13,6 +13,7 @@ using namespace std;
 
 class Command {
     // TODO: Add your data members
+protected:
     char **cmd;
     bool bg;
     int size;
@@ -35,7 +36,7 @@ public:
 
 class BuiltInCommand : public Command {
 public:
-    //BuiltInCommand(const char *cmd_line);
+    //explicit BuiltInCommand(const char *cmd_line);
     virtual ~BuiltInCommand() {}
 };
 
@@ -71,7 +72,9 @@ public:
 };
 
 class ChangeDirCommand : public BuiltInCommand {
-// TODO: Add your data members public:
+// TODO: Add your data members
+    char **OLDPWD;
+public:
     ChangeDirCommand(const char *cmd_line, char **plastPwd);
 
     virtual ~ChangeDirCommand() {}

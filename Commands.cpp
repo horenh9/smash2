@@ -29,7 +29,6 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 
 /******************** strings shit ************/
 
-
 string _ltrim(const std::string &s) {
     size_t start = s.find_first_not_of(WHITESPACE);
     return (start == std::string::npos) ? "" : s.substr(start);
@@ -261,7 +260,34 @@ void ShowPidCommand::execute() {
 }
 
 void GetCurrDirCommand::execute() {
-    char *buf = getcwd(buf, 100);
+    char *buf = new char[100] ;
+    getcwd(buf, 100);
     cout << buf << endl;
 }
+
+
+//לבדוק פה הכל! לא בטוח בשימוש של המערך
+void ChangeDirCommand::execute() {
+    if(cmd[2] != nullptr){//אם יש יותר מארגומנט אחד
+        cerr << "smash error: cd: too many arguments" << endl;
+        return;
+    }
+    const char *temp = cmd[1]; // load path to temp
+
+    if(strcmp(cmd[1], "-")){
+        if(OLDPWD == nullptr){
+            cerr << "smash error: cd: OLDPWD not set" << endl;
+            return;
+        }
+        temp = *OLDPWD; // if argument is '-' load OLDPWD to temp
+    }
+
+    getcwd(OLDPWD, 100); //insert current dir path to OLDPWD
+    ​chdir(temp);         //go to wanted directory via syscall
+    return;
+}
+
+
+
+
 
