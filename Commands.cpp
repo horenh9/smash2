@@ -54,8 +54,6 @@ int _parseCommandLine(const char *cmd_line, char **args) {
         args[++i] = NULL;
     }
     return i;
-
-    FUNC_EXIT()
 }
 
 bool _isBackgroundComamnd(const char *cmd_line) {
@@ -253,41 +251,98 @@ void JobsList::JobEntry::setJobId(int jobId) {
 }
 
 
-/******************** Built in command************/
+/******************** Built in command constructors************/
+
+BuiltInCommand::BuiltInCommand(const char *cmd_line) : Command(cmd_line) {
+}
+
+JobsCommand::JobsCommand(const char *cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+}
+
+ChangeDirCommand::ChangeDirCommand(const char *cmd_line, char **plastPwd) : BuiltInCommand(cmd_line) {
+    OLDPWD = string(*plastPwd);
+}
+
+KillCommand::KillCommand(const char *cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+
+}
+
+ForegroundCommand::ForegroundCommand(const char *cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+
+}
+
+
+/******************** Built in command executes************/
 
 void ShowPidCommand::execute() {
     cout << "smash pid is " << getPid() << endl;
 }
 
 void GetCurrDirCommand::execute() {
-    char *buf = new char[100] ;
+    char *buf = new char[100];
     getcwd(buf, 100);
     cout << buf << endl;
+    delete[] buf;
 }
 
-
-//לבדוק פה הכל! לא בטוח בשימוש של המערך
 void ChangeDirCommand::execute() {
-    if(cmd[2] != nullptr){//אם יש יותר מארגומנט אחד
+    if (cmd[2] != nullptr) {
         cerr << "smash error: cd: too many arguments" << endl;
         return;
     }
-    const char *temp = cmd[1]; // load path to temp
+    string temp = cmd[1]; // load path to temp
 
-    if(strcmp(cmd[1], "-")){
-        if(OLDPWD == nullptr){
+    if (temp == "-") {
+        if (OLDPWD.empty()) {
             cerr << "smash error: cd: OLDPWD not set" << endl;
             return;
         }
-        temp = *OLDPWD; // if argument is '-' load OLDPWD to temp
+        temp = OLDPWD; // if argument is '-' load OLDPWD to temp
     }
+    char *buf = new char[100];
+    getcwd(buf, 100);
+    if (chdir(temp.data()) == -1)        //go to wanted directory via syscall
+        perror("smash error: chdir failed");
+    else
+        OLDPWD = string(buf);
 
-    getcwd(OLDPWD, 100); //insert current dir path to OLDPWD
-    ​chdir(temp);         //go to wanted directory via syscall
-    return;
+    delete[]buf;
 }
 
+void JobsCommand::execute() {
+    jobs->printJobsList();
+}
 
+void KillCommand::execute() {
+    jobs->removeFinishedJobs();
+    if (jobs->getJobById(int(cmd[2])) == nullptr) {
+        cerr << "smash error: kill: job-id " << cmd[2] << " does not exist" << endl;
+        return;
+    }
+    if (cmd[1][0] != '-' || cmd[3] != nullptr) {
+        cerr << "smash error: kill: invalid arguments" << endl;
+        return;
+    }
+    cout << "signal number " << cmd[1] << " was sent to pid " << jobs->getJobById(int(cmd[2]))->getPid() << endl;
+    kill(jobs->getJobById(int(cmd[2]))->getPid(), int(cmd[1]));
+}
 
+void ForegroundCommand::execute() {
+    jobs->removeFinishedJobs();
+    int id;
+    if (cmd[1])
+        id = int(cmd[1]);
+    else
+        id = jobs->max;
+    JobsList::JobEntry *job = jobs->getJobById(id);
+    if (job) {
+        job->setMode(2);
+        jobs->removeJobById(id);
+        cout << job->getJob() << " : " << job->getPid() << endl;
+        kill(job->getPid(), SIGCONT);
+        waitpid(job->getPid(), nullptr, 0);
+    } else
+        cerr << "smash error: fg: job-id " << id << " does not exist" << endl;
+}
 
 

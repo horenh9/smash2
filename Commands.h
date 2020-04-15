@@ -9,18 +9,18 @@
 using namespace std;
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
-#define HISTORY_MAX_RECORDS (50)
 
 class Command {
-    // TODO: Add your data members
 protected:
     char **cmd;
     bool bg;
     int size;
     int pid;
 public:
+
     string getJob() const; //comment
     int getPid() const;
+    bool getBg() const;
 
     Command(const char *cmd_line);
 
@@ -30,13 +30,11 @@ public:
 
     //virtual void prepare();
     //virtual void cleanup();
-    // TODO: Add your extra methods if needed
-    bool getBg() const;
 };
 
 class BuiltInCommand : public Command {
 public:
-    //explicit BuiltInCommand(const char *cmd_line);
+    explicit BuiltInCommand(const char *cmd_line);
     virtual ~BuiltInCommand() {}
 };
 
@@ -73,9 +71,9 @@ public:
 
 class ChangeDirCommand : public BuiltInCommand {
 // TODO: Add your data members
-    char **OLDPWD;
+    string OLDPWD;
 public:
-    ChangeDirCommand(const char *cmd_line, char **plastPwd);
+    ChangeDirCommand(const char *cmd_line, char **plastPwd) ;
 
     virtual ~ChangeDirCommand() {}
 
@@ -85,7 +83,7 @@ public:
 
 class GetCurrDirCommand : public BuiltInCommand {
 public:
- //   GetCurrDirCommand(const char *cmd_line);
+    //   GetCurrDirCommand(const char *cmd_line);
 
     virtual ~GetCurrDirCommand() {}
 
@@ -112,31 +110,6 @@ class QuitCommand : public BuiltInCommand {
     void execute() override;
 };
 
-class CommandsHistory {
-protected:
-    class CommandHistoryEntry {
-        // TODO: Add your data members
-    };
-    // TODO: Add your data members
-public:
-    CommandsHistory();
-
-    ~CommandsHistory() {}
-
-    void addRecord(const char *cmd_line);
-
-    void printHistory();
-};
-
-class HistoryCommand : public BuiltInCommand {
-    // TODO: Add your data members
-public:
-    HistoryCommand(const char *cmd_line, CommandsHistory *history);
-
-    virtual ~HistoryCommand() {}
-
-    void execute() override;
-};
 
 class JobsList {
 public:
@@ -145,7 +118,7 @@ public:
         int jobId;
         const int pid;
         int mode;//0 = stopped, 1 = bg, 2 = fg, 3 = done
-        const time_t begin;
+        time_t begin;
     public:
         int getJobId() const;
 
@@ -191,7 +164,7 @@ public:
 };
 
 class JobsCommand : public BuiltInCommand {
-    // TODO: Add your data members
+    JobsList *jobs;
 public:
     JobsCommand(const char *cmd_line, JobsList *jobs);
 
@@ -202,6 +175,7 @@ public:
 
 class KillCommand : public BuiltInCommand {
     // TODO: Add your data members
+    JobsList *jobs;
 public:
     KillCommand(const char *cmd_line, JobsList *jobs);
 
@@ -212,6 +186,7 @@ public:
 
 class ForegroundCommand : public BuiltInCommand {
     // TODO: Add your data members
+    JobsList *jobs;
 public:
     ForegroundCommand(const char *cmd_line, JobsList *jobs);
 
