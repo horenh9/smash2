@@ -17,7 +17,7 @@ int main(int argc, char* argv[]) {
 
     SmallShell& smash = SmallShell::getInstance();
     while(true) {
-        cout << SmallShell::prompt_name; // TODO: change this (why?)
+        cout << SmallShell::prompt_name << "> ";
         string cmd_line;
         getline(cin, cmd_line);
         smash.executeCommand(cmd_line.c_str());

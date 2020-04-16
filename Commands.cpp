@@ -39,7 +39,7 @@ string _rtrim(const string &s) {
     return (end == string::npos) ? "" : s.substr(0, end + 1);
 }
 
-string _trim(const std::string &s) {
+string _trim(const string &s) {
     return _rtrim(_ltrim(s));
 }
 
@@ -79,61 +79,39 @@ void _removeBackgroundSign(string cmd_line) {
 
 
 SmallShell::SmallShell() {
-    prompt_name = "smash> ";
+    prompt_name = "smash";
+    jobs = new JobsList();
+    plastPwd = "";
 }
 
 SmallShell::~SmallShell() {
-// TODO: add your implementation
+    delete jobs;
 }
 
 /**
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
 */
 Command *SmallShell::CreateCommand(const string cmd_line) {
-    // For example:
 
     string cmd_s = string(cmd_line);
-    if (cmd_s.find("pwd") == 0) {
+    if (cmd_s.find("chprompt") == 0)
+        return new ChangePrompt(cmd_line, &prompt_name);
+    else if (cmd_s.find("pwd") == 0)
         return new GetCurrDirCommand(cmd_line);
-    } else {
-        if (cmd_s.find("cd") == 0) {
-            return new ChangeDirCommand(cmd_line, plastPwd);
-        } else {
-            if (cmd_s.find("showpid") == 0) {
-                return new ShowPidCommand(cmd_line);
-            } else {
-                if (cmd_s.find("jobs") == 0) {
-                    return new JobsCommand(cmd_line, jobs);
-                } else {
-                    if (cmd_s.find("kill") == 0) {
-                        return new KillCommand(cmd_line, jobs);
-                    } else {
-                        if (cmd_s.find("fg") == 0) {
-                            return new ForegroundCommand(cmd_line, jobs);
-                        } else {
-                            if (cmd_s.find("bg") == 0) {
-                                return new BackgroundCommand(cmd_line, jobs);
-                            } else {
-                                if (cmd_s.find("quit") == 0) {
-                                    return new QuitCommand(cmd_line, jobs);
-                                }
-
-                            }
-                        }
-
-                    }
-
-
-                }
-                /* .....
-                 else {
-                   return new ExternalCommand(cmd_line);
-                 }
-
-                   return nullptr;*/
-            }
-        }
-    }
+    else if (cmd_s.find("cd") == 0)
+        return new ChangeDirCommand(cmd_line, &plastPwd);
+    else if (cmd_s.find("showpid") == 0)
+        return new ShowPidCommand(cmd_line);
+    else if (cmd_s.find("jobs") == 0)
+        return new JobsCommand(cmd_line, jobs);
+    else if (cmd_s.find("kill") == 0)
+        return new KillCommand(cmd_line, jobs);
+    else if (cmd_s.find("fg") == 0)
+        return new ForegroundCommand(cmd_line, jobs);
+    else if (cmd_s.find("bg") == 0)
+        return new BackgroundCommand(cmd_line, jobs);
+    else if (cmd_s.find("quit") == 0)
+        return new QuitCommand(cmd_line, jobs);
 }
 
 void SmallShell::executeCommand(const string cmd_line) {
@@ -148,8 +126,7 @@ void SmallShell::executeCommand(const string cmd_line) {
 
 /********************************/
 
-Command::Command(
-        const string cmd_line) {
+Command::Command(const string cmd_line) : cmd_line(cmd_line) {
     cmd = new string[COMMAND_MAX_ARGS];
     for (int i = 0; i < COMMAND_MAX_ARGS; ++i)
         cmd[i] = "";
@@ -163,47 +140,41 @@ Command::~Command() {
 
 /******************** Built in command constructors************/
 
-BuiltInCommand::BuiltInCommand(
-        const string cmd_line) : Command(cmd_line) {
+ExternalCommand::ExternalCommand(const string cmd_line, JobsList *jobs) : Command(cmd_line), jobs(jobs) {
 }
 
-JobsCommand::JobsCommand(
-        const string cmd_line, JobsList
-*jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+
+
+BuiltInCommand::BuiltInCommand(const string cmd_line) : Command(cmd_line) {
 }
 
-ChangeDirCommand::ChangeDirCommand(
-        const string cmd_line, string
-*plastPwd) : BuiltInCommand(cmd_line) {
-    OLDPWD = *plastPwd;
+
+ChangePrompt::ChangePrompt(const string cmd_line, string *prompt_name) : BuiltInCommand(cmd_line), prompt(prompt_name) {
 }
 
-KillCommand::KillCommand(
-        const string cmd_line, JobsList
-*jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+JobsCommand::JobsCommand(const string cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
 }
 
-ForegroundCommand::ForegroundCommand(
-        const string cmd_line, JobsList
-*jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+ChangeDirCommand::ChangeDirCommand(const string cmd_line, string *plastPwd) : BuiltInCommand(cmd_line) {
+    OLDPWD = plastPwd;
 }
 
-BackgroundCommand::BackgroundCommand(
-        const string cmd_line, JobsList
-*jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+KillCommand::KillCommand(const string cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
 }
 
-GetCurrDirCommand::GetCurrDirCommand(
-        const string cmd_line) : BuiltInCommand(cmd_line) {
+ForegroundCommand::ForegroundCommand(const string cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
 }
 
-ShowPidCommand::ShowPidCommand(
-        const string cmd_line) : BuiltInCommand(cmd_line) {
+BackgroundCommand::BackgroundCommand(const string cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
 }
 
-QuitCommand::QuitCommand(
-        const string cmd_line, JobsList
-*jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+GetCurrDirCommand::GetCurrDirCommand(const string cmd_line) : BuiltInCommand(cmd_line) {
+}
+
+ShowPidCommand::ShowPidCommand(const string cmd_line) : BuiltInCommand(cmd_line) {
+}
+
+QuitCommand::QuitCommand(const string cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
 }
 
 /******************** Jobs ************/
@@ -216,11 +187,8 @@ JobsList::~JobsList() {
     delete jobs;
 }
 
-JobsList::JobEntry::JobEntry(string *job, int
-jobId, int
-                             pid, int
-                             mode) : jobId(jobId), pid(pid), mode(mode),
-                                     begin(time(0)) {
+JobsList::JobEntry::JobEntry(string *job, int jobId, int pid, int mode) : jobId(jobId), pid(pid), mode(mode),
+                                                                          begin(time(0)) {
     int i = 0;
     job_name = "";
     while (job[i] != "")
@@ -329,8 +297,7 @@ time_t JobsList::JobEntry::getBegin() const {
     return begin;
 }
 
-string
-JobsList::JobEntry::getJob() const {
+string JobsList::JobEntry::getJob() const {
     return job_name;
 }
 
@@ -339,6 +306,28 @@ void JobsList::JobEntry::setMode(int mode) {
 }
 
 /******************** Built in command executes************/
+
+void ExternalCommand::execute() {
+    pid_t p = fork();
+    if (p == 0) {
+        char *c = "-c";
+        if (cmd_line.at(cmd_line.size()) == '&')
+            jobs->addJob(this);
+        const char *argv[] = {c, cmd_line.c_str(),nullptr};
+        execv("/bin/bash", argv);
+    } else {
+        wait(nullptr);
+    }
+}
+
+
+
+void ChangePrompt::execute() {
+    if (cmd[1].empty())
+        *prompt = "smash";
+    else
+        *prompt = cmd[1];
+}
 
 void ShowPidCommand::execute() {
     cout << "smash pid is " << getPid() << endl;
@@ -359,18 +348,18 @@ void ChangeDirCommand::execute() {
     string temp = cmd[1]; // load path to temp
 
     if (temp == "-") {
-        if (OLDPWD.empty()) {
+        if (OLDPWD->empty()) {
             cerr << "smash error: cd: OLDPWD not set" << endl;
             return;
         }
-        temp = OLDPWD; // if argument is '-' load OLDPWD to temp
+        temp = *OLDPWD; // if argument is '-' load OLDPWD to temp
     }
     char *buf = new char[COMMAND_ARGS_MAX_LENGTH];
     getcwd(buf, COMMAND_ARGS_MAX_LENGTH);
     if (chdir(temp.data()) == -1)        //go to wanted directory via syscall
         perror("smash error: chdir failed");
     else
-        OLDPWD = string(buf);
+        *OLDPWD = string(buf);
 
     delete[]buf;
 }
@@ -466,8 +455,18 @@ void QuitCommand::execute() {
 
 }
 
-JobsCommand::JobsCommand(
-        const string cmd_line, JobsList
-*jobs) {
-
+RedirectionCommand::RedirectionCommand(const string cmd_line) : Command(cmd_line) {
 }
+
+void RedirectionCommand::execute() {
+    if(cmd_line.find(">>>")){
+
+    }
+    if(cmd_line.find(">>")){
+
+    }
+    if(cmd_line.find(">")){
+
+    }
+}
+

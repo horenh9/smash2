@@ -14,6 +14,7 @@ class JobsList;
 
 class Command {
 protected:
+    const string cmd_line;
     string *cmd;
     bool bg;
     int size;
@@ -37,10 +38,11 @@ public:
 };
 
 class ExternalCommand : public Command {
+    JobsList *jobs;
 public:
-    ExternalCommand(const string cmd_line);
+    explicit ExternalCommand(const string cmd_line, JobsList *jobs);
 
-    virtual ~ExternalCommand() {}
+    virtual ~ExternalCommand();
 
     void execute() override;
 };
@@ -48,7 +50,7 @@ public:
 class PipeCommand : public Command {
     // TODO: Add your data members
 public:
-    PipeCommand(const string cmd_line);
+    explicit PipeCommand(const string cmd_line);
 
     virtual ~PipeCommand() {}
 
@@ -124,11 +126,21 @@ public:
     virtual ~BuiltInCommand();
 };
 
+class ChangePrompt : public BuiltInCommand {
+    string *prompt;
+public:
+    explicit ChangePrompt(const string cmd_line, string *prompt_name);
+
+    virtual ~ChangePrompt();
+
+    void execute() override;
+};
+
 class ShowPidCommand : public BuiltInCommand {
 public:
     explicit ShowPidCommand(const string cmd_line);
 
-    virtual ~ShowPidCommand() {}
+    virtual ~ShowPidCommand();
 
     void execute() override;
 };
@@ -143,7 +155,7 @@ public:
 };
 
 class ChangeDirCommand : public BuiltInCommand {
-    string OLDPWD;
+    string *OLDPWD;
 public:
     ChangeDirCommand(const string cmd_line, string *plastPwd);
 
@@ -204,7 +216,6 @@ public:
     void execute() override;
 };
 
-
 // TODO: should it really inhirit from BuiltInCommand ?
 class CopyCommand : public BuiltInCommand {
 public:
@@ -219,12 +230,15 @@ public:
 // maybe chprompt , timeout ?
 
 class SmallShell {
+    JobsList *jobs;
 
-private:
     SmallShell();
+
+    string plastPwd;
 
 public:
     static string prompt_name;
+
     Command *CreateCommand(const string cmd_line);
 
     SmallShell(SmallShell const &) = delete; // disable copy ctor
