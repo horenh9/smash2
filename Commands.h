@@ -12,6 +12,8 @@ using namespace std;
 
 class JobsList;
 
+class SmallShell;
+
 class Command {
 protected:
     const string cmd_line;
@@ -60,7 +62,7 @@ public:
 class RedirectionCommand : public Command {
     // TODO: Add your data members
 public:
-    explicit RedirectionCommand(const string cmd_line);
+    explicit RedirectionCommand(const string cmd_line, SmallShell smash);
 
     virtual ~RedirectionCommand() {}
 

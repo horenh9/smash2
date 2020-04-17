@@ -94,7 +94,9 @@ SmallShell::~SmallShell() {
 Command *SmallShell::CreateCommand(const string cmd_line) {
 
     string cmd_s = string(cmd_line);
-    if (cmd_s.find("chprompt") == 0)
+    if (cmd_s.find(">") == 0)
+        return new RedirectionCommand(cmd_line, this);
+    else if (cmd_s.find("chprompt") == 0)
         return new ChangePrompt(cmd_line, &prompt_name);
     else if (cmd_s.find("pwd") == 0)
         return new GetCurrDirCommand(cmd_line);
@@ -142,7 +144,6 @@ Command::~Command() {
 
 ExternalCommand::ExternalCommand(const string cmd_line, JobsList *jobs) : Command(cmd_line), jobs(jobs) {
 }
-
 
 
 BuiltInCommand::BuiltInCommand(const string cmd_line) : Command(cmd_line) {
@@ -313,13 +314,12 @@ void ExternalCommand::execute() {
         char *c = "-c";
         if (cmd_line.at(cmd_line.size()) == '&')
             jobs->addJob(this);
-        const char *argv[] = {c, cmd_line.c_str(),nullptr};
+        const char *argv[] = {c, cmd_line.c_str(), nullptr};
         execv("/bin/bash", argv);
     } else {
         wait(nullptr);
     }
 }
-
 
 
 void ChangePrompt::execute() {
@@ -458,15 +458,41 @@ void QuitCommand::execute() {
 RedirectionCommand::RedirectionCommand(const string cmd_line) : Command(cmd_line) {
 }
 
-void RedirectionCommand::execute() {
-    if(cmd_line.find(">>>")){
-
+string delete_2last(string *cmd) {
+    string str = "";
+    int count = 0;
+    while (count < COMMAND_MAX_ARGS - 2 && !cmd[count].empty()) {
+        if (!cmd[count + 2].empty())
+            str += cmd[count];
+        count++;
     }
-    if(cmd_line.find(">>")){
-
-    }
-    if(cmd_line.find(">")){
-
-    }
+    return str;
 }
 
+string last_word(string *cmd) {
+    string str = "";
+    int count = 0;
+    while (!cmd[count].empty())
+        count++;
+    str = cmd[count];
+    return str;
+}
+
+void RedirectionCommand::execute() {
+    if (cmd_line.find(">>")) {
+
+        File * f = open(last_word(cmd), O_WRONLY O_CREATE O_APPEND);
+        return;
+    }
+    if (cmd_line.find(">")) {
+        File * file = open(last_word(cmd), O_WRONLY O_CREATE);
+        streambuf *stream_buffer_cout = cout.rdbuf();
+        streambuf *stream_buffer_file = file.rdbuf();
+        cout.rdbuf(stream_buffer_file);
+        Command *comm = CreateCommand(delete_2last(cmd));
+
+        cout.rdbuf(stream_buffer_cout);
+        file.close();
+        return;
+    }
+}
