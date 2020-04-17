@@ -21,6 +21,9 @@ protected:
     bool bg;
     int size;
     int pid;
+    int out;
+    int in;
+    int err;
 public:
 
     string *getJob() const;
@@ -29,7 +32,7 @@ public:
 
     bool getBg() const;
 
-    Command(const string cmd_line);
+    Command(const string cmd_line, int out = 1, int in = 0, int err = 2);
 
     virtual ~Command();
 
@@ -38,39 +41,6 @@ public:
     //virtual void prepare();
     //virtual void cleanup();
 };
-
-class ExternalCommand : public Command {
-    JobsList *jobs;
-public:
-    explicit ExternalCommand(const string cmd_line, JobsList *jobs);
-
-    virtual ~ExternalCommand();
-
-    void execute() override;
-};
-
-class PipeCommand : public Command {
-    // TODO: Add your data members
-public:
-    explicit PipeCommand(const string cmd_line);
-
-    virtual ~PipeCommand() {}
-
-    void execute() override;
-};
-
-class RedirectionCommand : public Command {
-    // TODO: Add your data members
-public:
-    explicit RedirectionCommand(const string cmd_line, SmallShell smash);
-
-    virtual ~RedirectionCommand() {}
-
-    void execute() override;
-    //void prepare() override;
-    //void cleanup() override;
-};
-
 
 class JobsList {
 public:
@@ -105,9 +75,9 @@ public:
 
     void addJob(Command *cmd, bool isStopped = false);
 
-    void printJobsList();
+    void printJobsList(int out);
 
-    void killAllJobs();
+    void killAllJobs(int out);
 
     void removeJobById(int jobId);
 
@@ -118,6 +88,41 @@ public:
     JobEntry *getLastJob(int *lastJobId);
 
     JobEntry *getLastStoppedJob(int *jobId);
+};
+
+class ExternalCommand : public Command {
+    JobsList *jobs;
+public:
+    explicit ExternalCommand(const string cmd_line, JobsList *jobs);
+
+    virtual ~ExternalCommand();
+
+    void execute() override;
+};
+
+class PipeCommand : public Command {
+    SmallShell *smash;
+    string op;
+    string command1;
+    string command2;
+public:
+    explicit PipeCommand(const string cmd_line, SmallShell *smash);
+
+    virtual ~PipeCommand() {}
+
+    void execute() override;
+};
+
+class RedirectionCommand : public Command {
+    SmallShell *smash;
+public:
+    explicit RedirectionCommand(const string cmd_line, SmallShell *smash);
+
+    virtual ~RedirectionCommand() {}
+
+    void execute() override;
+    //void prepare() override;
+    //void cleanup() override;
 };
 
 
