@@ -110,7 +110,7 @@ SmallShell::~SmallShell() {
     delete jobs;
 }
 
-Command *SmallShell::CreateCommand(const string cmd_line) {
+Command *SmallShell::CreateCommand(const string cmd_line, int out, int in, int err) {
     string *cmd = new string[COMMAND_MAX_ARGS];
     for (int i = 0; i < COMMAND_MAX_ARGS; ++i)
         cmd[i] = "";
@@ -125,21 +125,21 @@ Command *SmallShell::CreateCommand(const string cmd_line) {
     else if ("chprompt" == command_name || (count == 1 && "chprompt&" == command_name))
         return new ChangePrompt(cmd_line, &prompt_name);
     else if ("pwd" == command_name || "pwd&" == command_name)
-        return new GetCurrDirCommand(cmd_line);
+        return new GetCurrDirCommand(cmd_line, out, in, err);
     else if ("cd" == command_name)
-        return new ChangeDirCommand(cmd_line, &plastPwd);
+        return new ChangeDirCommand(cmd_line, &plastPwd, out, in, err);
     else if ("showpid" == command_name || "showpid&" == command_name)
-        return new ShowPidCommand(cmd_line);
+        return new ShowPidCommand(cmd_line, out, in, err);
     else if ("jobs" == command_name || "jobs&" == command_name)
-        return new JobsCommand(cmd_line, jobs);
+        return new JobsCommand(cmd_line, jobs, out, in, err);
     else if ("kill" == command_name)
-        return new KillCommand(cmd_line, jobs);
+        return new KillCommand(cmd_line, jobs, out, in, err);
     else if ("fg" == command_name)
-        return new ForegroundCommand(cmd_line, jobs);
+        return new ForegroundCommand(cmd_line, jobs, out, in, err);
     else if ("bg" == command_name)
-        return new BackgroundCommand(cmd_line, jobs);
+        return new BackgroundCommand(cmd_line, jobs, out, in, err);
     else if ("quit" == command_name || "quit&" == command_name)
-        return new QuitCommand(cmd_line, jobs);
+        return new QuitCommand(cmd_line, jobs, out, in, err);
 
 }
 
@@ -175,10 +175,11 @@ ExternalCommand::ExternalCommand(const string cmd_line, JobsList *jobs) : Comman
 RedirectionCommand::RedirectionCommand(const string cmd_line, SmallShell *smash) : Command(cmd_line), smash(smash) {
 }
 
-PipeCommand::PipeCommand(const string cmd_line, SmallShell *smash) : Command(cmd_line), smash(smash) {
+PipeCommand::PipeCommand(const string cmd_line, SmallShell *smash) :
+        Command(cmd_line), smash(smash), cmd1(nullptr), cmd2(nullptr) {
     int counter = 0;
     op = "";
-    while (!cmd[counter].empty()) {
+    while (!cmd[counter].empty()) {// split the commands
         if (cmd[counter] == "|" || cmd[counter] == "|&")
             if (cmd[counter] == "|")
                 op = "|";
@@ -188,41 +189,82 @@ PipeCommand::PipeCommand(const string cmd_line, SmallShell *smash) : Command(cmd
             command1 += cmd[counter];
         else
             command2 += cmd[counter];
-
         counter++;
+    }
+
+    int fd[2];
+    if (pipe(fd) == -1) {
+        string print = "smash error: pipe failed";
+        write(err, print, print.size());
+        return;
+    }
+    if (fork() == 0) {
+        //child procces
+        if (close(fd[0]) == -1) {//only writing
+            string print = "smash error: close failed";
+            write(err, print, print.size());
+            return;
+        }
+        if (op == "|")
+            cmd1 = smash->CreateCommand(command1, fd[1]);
+        else
+            cmd1 = smash->CreateCommand(command1, out, in, fd[1]);
+
+    } else {
+        //father proccess
+        if (close(fd[1]) == -1) {//only reading
+            string print = "smash error: close failed";
+            write(err, print, print.size());
+            return;
+        }
+        cmd2 = smash->CreateCommand(command2, out, fd[0]);
     }
 }
 
 
-BuiltInCommand::BuiltInCommand(const string cmd_line) : Command(cmd_line) {
+PipeCommand::~PipeCommand() {
+    delete cmd1;
+    delete cmd2;
 }
 
-ChangePrompt::ChangePrompt(const string cmd_line, string *prompt_name) : BuiltInCommand(cmd_line), prompt(prompt_name) {
+BuiltInCommand::BuiltInCommand(const string cmd_line, int out, int in, int err) : Command(cmd_line, out, in, err) {
 }
 
-JobsCommand::JobsCommand(const string cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+ChangePrompt::ChangePrompt(const string cmd_line, string *prompt_name) :
+        BuiltInCommand(cmd_line), prompt(prompt_name) {
 }
 
-ChangeDirCommand::ChangeDirCommand(const string cmd_line, string *plastPwd) : BuiltInCommand(cmd_line) {
+JobsCommand::JobsCommand(const string cmd_line, JobsList *jobs, int out, int in, int err) :
+        BuiltInCommand(cmd_line, out, in, err), jobs(jobs) {
+}
+
+ChangeDirCommand::ChangeDirCommand(const string cmd_line, string *plastPwd, int out, int in, int err) :
+        BuiltInCommand(cmd_line, out, in, err) {
     OLDPWD = plastPwd;
 }
 
-KillCommand::KillCommand(const string cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+KillCommand::KillCommand(const string cmd_line, JobsList *jobs, int out, int in, int err) :
+        BuiltInCommand(cmd_line, out, in, err), jobs(jobs) {
 }
 
-ForegroundCommand::ForegroundCommand(const string cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+ForegroundCommand::ForegroundCommand(const string cmd_line, JobsList *jobs, int out, int in, int err) :
+        BuiltInCommand(cmd_line, out, in, err), jobs(jobs) {
 }
 
-BackgroundCommand::BackgroundCommand(const string cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+BackgroundCommand::BackgroundCommand(const string cmd_line, JobsList *jobs, int out, int in, int err) :
+        BuiltInCommand(cmd_line, out, in, err), jobs(jobs) {
 }
 
-GetCurrDirCommand::GetCurrDirCommand(const string cmd_line) : BuiltInCommand(cmd_line) {
+GetCurrDirCommand::GetCurrDirCommand(const string cmd_line, int out, int in, int err) :
+        BuiltInCommand(cmd_line, out, in, err) {
 }
 
-ShowPidCommand::ShowPidCommand(const string cmd_line) : BuiltInCommand(cmd_line) {
+ShowPidCommand::ShowPidCommand(const string cmd_line, int out, int in, int err) :
+        BuiltInCommand(cmd_line, out, in, err) {
 }
 
-QuitCommand::QuitCommand(const string cmd_line, JobsList *jobs) : BuiltInCommand(cmd_line), jobs(jobs) {
+QuitCommand::QuitCommand(const string cmd_line, JobsList *jobs, int out, int in, int err) :
+        BuiltInCommand(cmd_line, out, in, err), jobs(jobs) {
 }
 
 /******************** Jobs ************/
@@ -357,26 +399,22 @@ void JobsList::JobEntry::setMode(int mode) {
 /******************** executes************/
 
 void RedirectionCommand::execute() {
-    int default_cout = dup(1);
-    if (default_cout == -1) {
-        perror("smash error: dup failed");
-        return;
-    }
-    close(1);
-    int check;
+    int fd;
     if (cmd_line.find(">>"))
-        check = open(last_word(cmd), O_WRONLY | O_CREATE | O_APPEND);
+        fd = open(last_word(cmd), O_WRONLY | O_CREATE | O_APPEND);
     else
-        check = open(last_word(cmd), O_WRONLY | O_CREATE | O_TRUNC);
-    if (check == -1) {
-        dup2(default_cout, 1);
-        perror("smash error: open failed");
+        fd = open(last_word(cmd), O_WRONLY | O_CREATE | O_TRUNC);
+    if (fd == -1) {
+        string print = "smash error: open failed";
+        write(err, print, print.size());
         return;
     }
-    Command *comm = smash->CreateCommand(delete_2last(cmd));
+    Command *comm = smash->CreateCommand(delete_2last(cmd), fd);
     comm->execute();
-    dup2(default_cout, 1);
-    close(default_cout);
+    if (close(fd) == -1) {
+        string print = "smash error: close failed";
+        write(err, print, print.size());
+    }
 }
 
 void ExternalCommand::execute() {
@@ -392,7 +430,8 @@ void ExternalCommand::execute() {
 }
 
 void PipeCommand::execute() {
-
+    cmd1->execute();
+    cmd2->execute();
 }
 
 

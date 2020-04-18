@@ -105,10 +105,12 @@ class PipeCommand : public Command {
     string op;
     string command1;
     string command2;
+    Command *cmd1;
+    Command *cmd2;
 public:
     explicit PipeCommand(const string cmd_line, SmallShell *smash);
 
-    virtual ~PipeCommand() {}
+    virtual ~PipeCommand();
 
     void execute() override;
 };
@@ -128,7 +130,7 @@ public:
 
 class BuiltInCommand : public Command {
 public:
-    explicit BuiltInCommand(const string cmd_line);
+    explicit BuiltInCommand(const string cmd_line, int out = 1, int in = 0, int err = 2);
 
     virtual ~BuiltInCommand();
 };
@@ -145,7 +147,7 @@ public:
 
 class ShowPidCommand : public BuiltInCommand {
 public:
-    explicit ShowPidCommand(const string cmd_line);
+    explicit ShowPidCommand(const string cmd_line, int out = 1, int in = 0, int err = 2);
 
     virtual ~ShowPidCommand();
 
@@ -154,7 +156,7 @@ public:
 
 class GetCurrDirCommand : public BuiltInCommand {
 public:
-    explicit GetCurrDirCommand(const string cmd_line);
+    explicit GetCurrDirCommand(const string cmd_line,  int out = 1, int in = 0, int err = 2);
 
     virtual ~GetCurrDirCommand();
 
@@ -164,7 +166,7 @@ public:
 class ChangeDirCommand : public BuiltInCommand {
     string *OLDPWD;
 public:
-    ChangeDirCommand(const string cmd_line, string *plastPwd);
+    ChangeDirCommand(const string cmd_line, string *plastPwd, int out = 1, int in = 0, int err = 2);
 
     virtual ~ChangeDirCommand() {}
 
@@ -174,7 +176,7 @@ public:
 class JobsCommand : public BuiltInCommand {
     JobsList *jobs;
 public:
-    JobsCommand(const string cmd_line, JobsList *jobs);
+    JobsCommand(const string cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
     virtual ~JobsCommand();
 
@@ -184,7 +186,7 @@ public:
 class KillCommand : public BuiltInCommand {
     JobsList *jobs;
 public:
-    KillCommand(string cmd_line, JobsList *jobs);
+    KillCommand(string cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
     virtual ~KillCommand() {}
 
@@ -194,7 +196,7 @@ public:
 class ForegroundCommand : public BuiltInCommand {
     JobsList *jobs;
 public:
-    ForegroundCommand(const string cmd_line, JobsList *jobs);
+    ForegroundCommand(const string cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
     virtual ~ForegroundCommand() {}
 
@@ -205,7 +207,7 @@ class BackgroundCommand : public BuiltInCommand {
     // TODO: Add your data members
     JobsList *jobs;
 public:
-    BackgroundCommand(const string cmd_line, JobsList *jobs);
+    BackgroundCommand(const string cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
     virtual ~BackgroundCommand() {}
 
@@ -216,7 +218,7 @@ class QuitCommand : public BuiltInCommand {
 // TODO: Add your data members public:
     JobsList *jobs;
 public:
-    QuitCommand(const string cmd_line, JobsList *jobs);
+    QuitCommand(const string cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
     virtual ~QuitCommand();
 
@@ -246,7 +248,7 @@ class SmallShell {
 public:
     static string prompt_name;
 
-    Command *CreateCommand(const string cmd_line);
+    Command *CreateCommand(const string cmd_line, int out = 1, int in = 0, int err = 2);
 
     SmallShell(SmallShell const &) = delete; // disable copy ctor
     void operator=(SmallShell const &) = delete; // disable = operator
