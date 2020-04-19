@@ -154,21 +154,24 @@ void SmallShell::executeCommand(const string cmd_line) {
     // for example:
     // Please note that you must fork smash process for some commands (e.g., external commands....)
     Command *cmd = CreateCommand(cmd_line);
-    /*   ExternalCommand *ext = dynamic_cast<ExternalCommand *>(cmd);
-       if (ext) {//the command is of type External
-           int ext_pid = fork();
-           if (ext_pid == 0) {//son
-               cmd->execute();
+    ExternalCommand *ext = dynamic_cast<ExternalCommand *>(cmd);
+    int check;
+    if (ext && _isBackgroundComamnd(cmd_line)) {
+        pid_t extpid = fork();
+        int jobId = jobs->addJob(cmd, extpid);
+        if (extpid == 0) {//son
+            cmd->execute();
+            jobs->getJobById(jobId)->setMode(3);
+            cout << "setted mode in son" << endl;
+            exit(2);
+        } else {//father
+            cout << "mode in father" << endl;
+            //   waitpid(extpid,&check,0);
+            cout << "setted mode in father" << endl;
+        }
+    } else
+        cmd->execute();
 
-           } else {//father
-               if (_isBackgroundComamnd(cmd_line))
-                   jobs->addJob(cmd, ext_pid);
-               else
-                   wait(nullptr);
-           }
-
-       } else*/
-    cmd->execute();
 
 }
 
@@ -294,6 +297,7 @@ QuitCommand::QuitCommand(const string cmd_line, JobsList *jobs, int out, int in,
 
 JobsList::JobsList() : max(0) {
     jobs = new list<JobEntry>();
+
 }
 
 JobsList::~JobsList() {
@@ -311,10 +315,11 @@ JobsList::JobEntry::JobEntry(string *job, int jobId, int pid, int mode) : jobId(
     job_name.substr(job_name.size(), 1);
 }
 
-void JobsList::addJob(Command *cmd, int pid, bool isStopped) {
+int JobsList::addJob(Command *cmd, int pid, bool isStopped) {
     removeFinishedJobs();
     JobEntry job = JobEntry(cmd->getJob(), max + 1, pid, !isStopped);
     jobs->push_back(job);
+    return job.getJobId();
 }
 
 void JobsList::printJobsList(int out) {
@@ -415,8 +420,12 @@ string JobsList::JobEntry::getJob() const {
     return job_name;
 }
 
-void JobsList::JobEntry::setMode(int mode) {
-    JobEntry::mode = mode;
+void JobsList::JobEntry::setMode(int new_mode) {
+    mode = new_mode;
+}
+
+void JobsList::JobEntry::setPid(int new_pid) {
+    pid = new_pid;
 }
 
 /******************** executes************/
@@ -440,17 +449,19 @@ void RedirectionCommand::execute() {
 
 void ExternalCommand::execute() {
     int check;
-    int curr_pid = fork();
+    pid_t curr_pid = fork();
     if (curr_pid == 0) {//son
         char *c = "-c";
-        char *argv[] = {"/bin/bash",c, (char *) cmd_line.c_str(), nullptr};
-        execv("/bin/bash", argv);
-        cout << "fdhdh" << endl;
-    } else {//father
+        string temp;
         if (_isBackgroundComamnd(cmd_line))
-            jobs->addJob(this, curr_pid);
+            temp = cmd_line.substr(0, cmd_line.size() - 1);
         else
-            wait(&check);
+            temp = cmd_line;
+        char *argv[] = {"/bin/bash", c, (char *) temp.c_str(), nullptr};
+        execv("/bin/bash", argv);
+    } else { //father
+        waitpid(curr_pid, &check, 0);
+        cout << "setted mode in father??" << endl;
     }
 }
 
@@ -520,7 +531,6 @@ void ChangeDirCommand::execute() {
 }
 
 void JobsCommand::execute() {
-    jobs->removeFinishedJobs();
     jobs->printJobsList(out);
 }
 

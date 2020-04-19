@@ -46,7 +46,7 @@ public:
     class JobEntry {
         string job_name;
         int jobId;
-        const int pid;
+        int pid;
         int mode;//0 = stopped, 1 = bg, 2 = fg, 3 = done
         time_t begin;
     public:
@@ -61,6 +61,7 @@ public:
         int getMode() const;
 
         void setMode(int mode);
+        void setPid(int pid);
 
         JobEntry(string *job, int jobId, int pid, int mode);
     };
@@ -72,7 +73,7 @@ public:
 
     ~JobsList();
 
-    void addJob(Command *cmd, int pid, bool isStopped = false);
+    int addJob(Command *cmd, int pid, bool isStopped = false);
 
     void printJobsList(int out);
 
