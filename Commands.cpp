@@ -84,7 +84,7 @@ string delete_2last(string *cmd) {
     int count = 0;
     while (count < COMMAND_MAX_ARGS - 2 && !cmd[count].empty()) {
         if (!cmd[count + 2].empty())
-            str += cmd[count];
+            str += cmd[count] + " ";
         count++;
     }
     return str;
@@ -95,7 +95,7 @@ string last_word(string *cmd) {
     int count = 0;
     while (!cmd[count].empty())
         count++;
-    str = cmd[count];
+    str = cmd[--count];
     return str;
 }
 
@@ -121,9 +121,9 @@ Command *SmallShell::CreateCommand(const string cmd_line, int out, int in, int e
     string command_name = cmd[0];
     string cmd_s = string(cmd_line);
     delete[] cmd;
-    if (cmd_s.find("|") == 0)
+    if (cmd_s.find("|") != string::npos)
         return new PipeCommand(cmd_line, this);
-    else if (cmd_s.find(">") == 0)
+    else if (cmd_s.find(">") != string::npos)
         return new RedirectionCommand(cmd_line, this);
     else if ("chprompt" == command_name || (count == 1 && "chprompt&" == command_name))
         return new ChangePrompt(cmd_line, &prompt_name);
@@ -168,7 +168,7 @@ Command::Command(const string cmd_line, int out, int in, int err) : cmd_line(cmd
     for (int i = 0; i < COMMAND_MAX_ARGS; ++i)
         cmd[i] = "";
     _parseCommandLine(cmd_line, cmd);
-    bg = _isBackgroundComamnd(cmd_line);
+    // bg = _isBackgroundComamnd(cmd_line);
 }
 
 Command::~Command() {
@@ -178,7 +178,7 @@ Command::~Command() {
 /******************** Built in command constructors************/
 
 ExternalCommand::ExternalCommand(const string cmd_line, JobsList *jobs, int out, int in, int err) :
-        Command(cmd_line), jobs(jobs) {}
+        Command(cmd_line, out, in, err), jobs(jobs) {}
 
 RedirectionCommand::RedirectionCommand(const string cmd_line, SmallShell *smash) : Command(cmd_line), smash(smash) {
 }
@@ -206,8 +206,7 @@ PipeCommand::PipeCommand(const string cmd_line, SmallShell *smash) :
         write(err, "smash error: pipe failed", print.size());
         return;
     }
-    if (fork() == 0) {
-        //child procces
+    if (fork() == 0) {//son
         if (close(fd[0]) == -1) {//only writing
             string print = "smash error: close failed";
             write(err, "smash error: close failed", print.size());
@@ -218,8 +217,7 @@ PipeCommand::PipeCommand(const string cmd_line, SmallShell *smash) :
         else
             cmd1 = smash->CreateCommand(command1, out, in, fd[1]);
 
-    } else {
-        //father proccess
+    } else {//father
         if (close(fd[1]) == -1) {//only reading
             string print = "smash error: close failed";
             write(err, "smash error: close failed", print.size());
@@ -278,11 +276,11 @@ QuitCommand::QuitCommand(const string cmd_line, JobsList *jobs, int out, int in,
 /******************** Jobs ************/
 
 JobsList::JobsList() : max(0) {
-    jobs = new list<JobEntry>();
+    jobs_list = new list<JobEntry>();
 }
 
 JobsList::~JobsList() {
-    delete jobs;
+    delete jobs_list;
 }
 
 JobsList::JobEntry::JobEntry(string *job, int jobId, int pid, int mode) : jobId(jobId), pid(pid), mode(mode),
@@ -299,13 +297,13 @@ JobsList::JobEntry::JobEntry(string *job, int jobId, int pid, int mode) : jobId(
 int JobsList::addJob(Command *cmd, int pid, int mode) {
     removeFinishedJobs();
     JobEntry job = JobEntry(cmd->getJob(), max + 1, pid, mode);
-    jobs->push_back(job);
+    jobs_list->push_back(job);
     return job.getJobId();
 }
 
 void JobsList::printJobsList(int out) {
     removeFinishedJobs();
-    for (auto it = jobs->begin(); it != jobs->end(); ++it) {
+    for (auto it = jobs_list->begin(); it != jobs_list->end(); ++it) {
         double diff = difftime(time(0), it->getBegin());
         string mode = "";
         if (it->getMode() == 0)
@@ -318,19 +316,21 @@ void JobsList::printJobsList(int out) {
 }
 
 void JobsList::killAllJobs(int out) {
-    for (auto it = jobs->begin(); it != jobs->end(); ++it) {
+    for (auto it = jobs_list->begin(); it != jobs_list->end(); ++it) {
         string print = to_string(it->getPid()) + ": " + it->getJob() + "\n";
         const char *p = print.c_str();
         write(out, p, print.size());
-        KillCommand killcmd = KillCommand(it->getJob(), this);
+        KillCommand killcmd = KillCommand("kill -9 " + to_string(it->getJobId()), this);
         killcmd.execute();
-        removeJobById(it->getJobId());
+        ++it;
+        removeJobById((--it)->getJobId());
+        --it;
     }
 }
 
 void JobsList::removeFinishedJobs() {
     int currMax = 0, check = 0;
-    for (auto it = jobs->begin(); it != jobs->end(); ++it) {
+    for (auto it = jobs_list->begin(); it != jobs_list->end(); ++it) {
         if (waitpid(it->getPid(), &check, WNOHANG) != 0) {
             ++it;
             removeJobById((--it)->getJobId());
@@ -345,32 +345,32 @@ void JobsList::removeFinishedJobs() {
 }
 
 JobsList::JobEntry *JobsList::getJobById(int jobId) {
-    for (auto it = jobs->begin(); it != jobs->end(); ++it)
+    for (auto it = jobs_list->begin(); it != jobs_list->end(); ++it)
         if (it->getJobId() == jobId)
             return &(*it);
     return nullptr;
 }
 
 void JobsList::removeJobById(int jobId) {
-    for (auto it = jobs->begin(); it != jobs->end(); ++it)
+    for (auto it = jobs_list->begin(); it != jobs_list->end(); ++it)
         if (it->getJobId() == jobId) {
-            jobs->erase(it);
+            jobs_list->erase(it);
             return;
         }
 }
 
 JobsList::JobEntry *JobsList::getLastJob(int *lastJobId) {
     (*lastJobId) = max;
-    for (auto it = jobs->begin(); it != jobs->end(); ++it)
+    for (auto it = jobs_list->begin(); it != jobs_list->end(); ++it)
         if (it->getJobId() == max)
             return &(*it);
     return nullptr;
 }
 
 JobsList::JobEntry *JobsList::getLastStoppedJob(int *jobId) {
-    JobEntry *maxStopped = &(*(jobs->begin()));
+    JobEntry *maxStopped = &(*(jobs_list->begin()));
     (*jobId) = 0;
-    for (auto it = jobs->begin(); it != jobs->end(); ++it)
+    for (auto it = jobs_list->begin(); it != jobs_list->end(); ++it)
         if (it->getJobId() > maxStopped->getJobId() && it->getMode() == 0)
             maxStopped = &(*it);
     if (maxStopped != nullptr)
@@ -379,10 +379,6 @@ JobsList::JobEntry *JobsList::getLastStoppedJob(int *jobId) {
 }
 
 /******************** Getters/Setters************/
-
-bool Command::getBg() const {
-    return bg;
-}
 
 string *Command::getJob() const {
     return cmd;
@@ -412,16 +408,13 @@ void JobsList::JobEntry::setMode(int new_mode) {
     mode = new_mode;
 }
 
-void JobsList::JobEntry::setPid(int new_pid) {
-    pid = new_pid;
-}
-
 /******************** executes************/
 
 void RedirectionCommand::execute() {
     int fd;
+//    string *temp = cut_spaces(cmd, cmd->size());
     const char *lastword = last_word(cmd).c_str();
-    if (cmd_line.find(">>"))
+    if (cmd_line.find(">>") != string::npos)
         fd = open(lastword, O_WRONLY | O_CREAT | O_APPEND, 0666);
     else
         fd = open(lastword, O_WRONLY | O_CREAT | O_TRUNC, 0666);
@@ -447,6 +440,7 @@ void ExternalCommand::execute() {
     } else
         temp = cmd_line;
     if (extpid == 0) {//son
+        dup2(out,1);
         char *argv[] = {"/bin/bash", c, (char *) temp.c_str(), nullptr};
         execv("/bin/bash", argv);
     } else if (!bg) { //father
@@ -458,7 +452,6 @@ void PipeCommand::execute() {
     cmd1->execute();
     cmd2->execute();
 }
-
 
 /******************** Built in command executes************/
 
@@ -529,10 +522,14 @@ void KillCommand::execute() {
         int id = stoi(cmd[2]);
         if (jobs->getJobById(id) == nullptr) {
             string print = "smash error: kill: job-id " + cmd[2] + " does not exist\n";
+            const char *p = print.c_str();
+            write(out, p, print.size());
             return;
         }
         if (cmd[1].at(0) != '-' || !cmd[3].empty()) {
             string print = "smash error: kill: invalid arguments\n";
+            const char *p = print.c_str();
+            write(out, p, print.size());
             return;
         }
         string print = "signal number " + cmd[1].substr(1, cmd[1].length() - 1) + " was sent to pid "
@@ -543,22 +540,32 @@ void KillCommand::execute() {
     }
     catch (...) {
         string print = "smash error: kill: invalid arguments\n";
+        const char *p = print.c_str();
+        write(out, p, print.size());
     }
 }
 
 void ForegroundCommand::execute() {
     jobs->removeFinishedJobs();
-    if (jobs->jobs->empty() && cmd[1].empty()) {
+    if (jobs->jobs_list->empty() && cmd[1].empty()) {
         string print = "smash error: fg: jobs list is empty\n";
         const char *p = print.c_str();
         write(err, p, print.size());
         return;
     }
     try {
-        int id = jobs->getLastJob(&id)->getJobId();
-        if (!cmd[1].empty())
+        int id;
+        jobs->getLastJob(&id);
+        if (!cmd[1].empty()) {
             id = stoi(cmd[1]);
+        }
         JobsList::JobEntry *job = jobs->getJobById(id);
+        if (!cmd[2].empty()) {
+            string print = "smash error: fg: invalid arguments\n";
+            const char *p = print.c_str();
+            write(err, p, print.size());
+            return;
+        }
 
         if (job) {
             job->setMode(2);
@@ -604,7 +611,13 @@ void BackgroundCommand::execute() {
             return;
         }
         if (job->getMode() == 1) {
-            string print = " smash error: bg: job-id" + to_string(id) + "is already running in the background\n";
+            string print = " smash error: bg: job-id " + to_string(id) + " is already running in the background\n";
+            const char *p = print.c_str();
+            write(err, p, print.size());
+            return;
+        }
+        if (!cmd[2].empty()) { // there is more than one argument
+            string print = "smash error: fg: invalid arguments\n";
             const char *p = print.c_str();
             write(err, p, print.size());
             return;
@@ -624,10 +637,11 @@ void BackgroundCommand::execute() {
 
 void QuitCommand::execute() {
     if (cmd[1] == "kill" || cmd[1] == "kill&") {
-        int count = jobs->jobs->size();
+        int count = jobs->jobs_list->size();
         string print = "smash: sending SIGKILL signal to " + to_string(count) + " jobs:\n";
         const char *p = print.c_str();
         write(out, p, print.size());
         jobs->killAllJobs(out);
     }
+    exit(2);
 }

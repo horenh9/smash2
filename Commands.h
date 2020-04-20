@@ -18,18 +18,12 @@ class Command {
 protected:
     const string cmd_line;
     string *cmd;
-    bool bg;
-    int size;
     int out;
     int in;
     int err;
 public:
 
     string *getJob() const;
-
-    int getPid() const;
-
-    bool getBg() const;
 
     Command(const string cmd_line, int out = 1, int in = 0, int err = 2);
 
@@ -66,7 +60,7 @@ public:
         JobEntry(string *job, int jobId, int pid, int mode);
     };
 
-    list <JobEntry> *jobs;
+    list <JobEntry> *jobs_list;
     int max;
 
     JobsList();
