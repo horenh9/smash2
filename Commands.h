@@ -73,7 +73,7 @@ public:
 
     ~JobsList();
 
-    int addJob(Command *cmd, int pid, bool isStopped = false);
+    int addJob(Command *cmd, int pid, int mode);
 
     void printJobsList(int out);
 
