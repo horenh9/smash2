@@ -95,7 +95,14 @@ string last_word(string *cmd) {
     int count = 0;
     while (!cmd[count].empty())
         count++;
-    str = cmd[--count];
+    if (cmd[count] == "&")
+        str = cmd[count - 2];
+    else {
+        if (_isBackgroundComamnd(cmd[count - 1]))
+            str = cmd[count - 1].substr(0, cmd[count - 1].size() - 1);
+        else
+            str = cmd[count - 1];
+    }
     return str;
 }
 
@@ -144,9 +151,8 @@ Command *SmallShell::CreateCommand(const string cmd_line, int out, int in, int e
     else if ("quit" == command_name || "quit&" == command_name)
         return new QuitCommand(cmd_line, jobs, out, in, err);
     else {
-        return new ExternalCommand(cmd_line, jobs, out, in, err);
+        return new ExternalCommand(cmd_line, jobs, this, out, in, err);
     }
-
 }
 
 void SmallShell::executeCommand(const string cmd_line) {
@@ -159,6 +165,14 @@ void SmallShell::executeCommand(const string cmd_line) {
 
 int SmallShell::getPid() {
     return pid;
+}
+
+void SmallShell::setPidInFG(pid_t pid) {
+    curr_pid = pid;
+}
+
+int SmallShell::getPidInFG() {
+    return curr_pid;
 }
 
 /********************************/
@@ -177,8 +191,8 @@ Command::~Command() {
 
 /******************** Built in command constructors************/
 
-ExternalCommand::ExternalCommand(const string cmd_line, JobsList *jobs, int out, int in, int err) :
-        Command(cmd_line, out, in, err), jobs(jobs) {}
+ExternalCommand::ExternalCommand(const string cmd_line, JobsList *jobs, SmallShell *smash, int out, int in, int err) :
+        Command(cmd_line, out, in, err), jobs(jobs), smash(smash) {}
 
 RedirectionCommand::RedirectionCommand(const string cmd_line, SmallShell *smash) : Command(cmd_line), smash(smash) {
 }
@@ -194,36 +208,10 @@ PipeCommand::PipeCommand(const string cmd_line, SmallShell *smash) :
             else
                 op = "|&";
         else if (op.empty())
-            command1 += cmd[counter];
+            command1 += cmd[counter] + " ";
         else
-            command2 += cmd[counter];
+            command2 += cmd[counter] + " ";
         counter++;
-    }
-
-    int fd[2];
-    if (pipe(fd) == -1) {
-        string print = "smash error: pipe failed";
-        write(err, "smash error: pipe failed", print.size());
-        return;
-    }
-    if (fork() == 0) {//son
-        if (close(fd[0]) == -1) {//only writing
-            string print = "smash error: close failed";
-            write(err, "smash error: close failed", print.size());
-            return;
-        }
-        if (op == "|")
-            cmd1 = smash->CreateCommand(command1, fd[1]);
-        else
-            cmd1 = smash->CreateCommand(command1, out, in, fd[1]);
-
-    } else {//father
-        if (close(fd[1]) == -1) {//only reading
-            string print = "smash error: close failed";
-            write(err, "smash error: close failed", print.size());
-            return;
-        }
-        cmd2 = smash->CreateCommand(command2, out, fd[0]);
     }
 }
 
@@ -406,51 +394,6 @@ string JobsList::JobEntry::getJob() const {
 
 void JobsList::JobEntry::setMode(int new_mode) {
     mode = new_mode;
-}
-
-/******************** executes************/
-
-void RedirectionCommand::execute() {
-    int fd;
-//    string *temp = cut_spaces(cmd, cmd->size());
-    const char *lastword = last_word(cmd).c_str();
-    if (cmd_line.find(">>") != string::npos)
-        fd = open(lastword, O_WRONLY | O_CREAT | O_APPEND, 0666);
-    else
-        fd = open(lastword, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (fd == -1) {
-        perror("smash error: open failed");
-        return;
-    }
-    Command *comm = smash->CreateCommand(delete_2last(cmd), fd);
-    comm->execute();
-    if (close(fd) == -1)
-        perror("smash error: close failed");
-}
-
-void ExternalCommand::execute() {
-    int check;
-    char *c = "-c";
-    bool bg = _isBackgroundComamnd(cmd_line);
-    pid_t extpid = fork();
-    string temp;
-    if (bg) {
-        jobs->addJob(this, extpid, 1);
-        temp = cmd_line.substr(0, cmd_line.size() - 1);
-    } else
-        temp = cmd_line;
-    if (extpid == 0) {//son
-        dup2(out,1);
-        char *argv[] = {"/bin/bash", c, (char *) temp.c_str(), nullptr};
-        execv("/bin/bash", argv);
-    } else if (!bg) { //father
-        waitpid(extpid, &check, 0);
-    }
-}
-
-void PipeCommand::execute() {
-    cmd1->execute();
-    cmd2->execute();
 }
 
 /******************** Built in command executes************/
@@ -644,4 +587,66 @@ void QuitCommand::execute() {
         jobs->killAllJobs(out);
     }
     exit(2);
+}
+
+/******************** executes************/
+
+void RedirectionCommand::execute() {
+    int fd;
+//    string *temp = cut_spaces(cmd, cmd->size());
+    const char *lastword = last_word(cmd).c_str();
+    if (cmd_line.find(">>") != string::npos)
+        fd = open(lastword, O_WRONLY | O_CREAT | O_APPEND, 0666);
+    else
+        fd = open(lastword, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd == -1) {
+        perror("smash error: open failed");
+        return;
+    }
+    Command *comm = smash->CreateCommand(delete_2last(cmd), fd);
+    comm->execute();
+    if (close(fd) == -1)
+        perror("smash error: close failed");
+}
+
+void ExternalCommand::execute() {
+    int check;
+    char *c = "-c";
+    bool bg = _isBackgroundComamnd(cmd_line);
+    pid_t extpid = fork();
+    smash->setPidInFG(getpid());
+    string temp;
+    if (bg) {
+        jobs->addJob(this, extpid, 1);
+        temp = cmd_line.substr(0, cmd_line.size() - 1);
+    } else
+        temp = cmd_line;
+    if (extpid == 0) {//son
+        dup2(in, 0);
+        dup2(out, 1);
+        dup2(err, 2);
+        char *argv[] = {"/bin/bash", c, (char *) temp.c_str(), nullptr};
+        execv("/bin/bash", argv);
+        cout << "fail" << endl;
+    } else if (!bg) { //father
+        waitpid(extpid, &check, 0);
+    }
+}
+
+void PipeCommand::execute() {
+    int fd[2];
+    if (pipe(fd) == -1) {
+        string print = "smash error: pipe failed";
+        write(err, "smash error: pipe failed", print.size());
+        return;
+    }
+    if (op == "|")
+        cmd1 = smash->CreateCommand(command1, fd[1]);
+    else
+        cmd1 = smash->CreateCommand(command1, out, in, fd[1]);
+    cmd2 = smash->CreateCommand(command2, out, fd[0]);
+    cmd1->execute();
+    close(fd[1]);
+    cmd2->execute();
+    close(fd[0]);
 }

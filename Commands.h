@@ -55,6 +55,7 @@ public:
         int getMode() const;
 
         void setMode(int mode);
+
         void setPid(int pid);
 
         JobEntry(string *job, int jobId, int pid, int mode);
@@ -86,8 +87,10 @@ public:
 
 class ExternalCommand : public Command {
     JobsList *jobs;
+    SmallShell *smash;
 public:
-    explicit ExternalCommand(const string cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
+    explicit ExternalCommand(const string cmd_line, JobsList *jobs, SmallShell *smash,
+                             int out = 1, int in = 0, int err = 2);
 
     virtual ~ExternalCommand() {};
 
@@ -237,6 +240,7 @@ class SmallShell {
     JobsList *jobs;
     int pid;
     string plastPwd;
+    pid_t curr_pid;
 
 public:
 
@@ -245,6 +249,10 @@ public:
     SmallShell();
 
     int getPid();
+
+    int getPidInFG();
+
+    void setPidInFG(pid_t pid);
 
     Command *CreateCommand(const string cmd_line, int out = 1, int in = 0, int err = 2);
 
