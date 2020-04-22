@@ -193,8 +193,9 @@ public:
 
 class ForegroundCommand : public BuiltInCommand {
     JobsList *jobs;
+    SmallShell *smash;
 public:
-    ForegroundCommand(const string cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
+    ForegroundCommand(const string cmd_line, JobsList *jobs, SmallShell *smash, int out = 1, int in = 0, int err = 2);
 
     virtual ~ForegroundCommand() {};
 
@@ -237,12 +238,12 @@ public:
 // maybe chprompt , timeout ?
 
 class SmallShell {
-    JobsList *jobs;
     int pid;
     string plastPwd;
     pid_t curr_pid;
-
+    Command *currcmd;
 public:
+    JobsList *jobs;
 
     string prompt_name;
 
@@ -251,6 +252,10 @@ public:
     int getPid();
 
     int getPidInFG();
+
+    void setCommand(Command *cmd);
+
+    Command *getCommand();
 
     void setPidInFG(pid_t pid);
 

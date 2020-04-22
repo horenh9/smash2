@@ -109,7 +109,7 @@ string last_word(string *cmd) {
 
 /******************** Small Shell ************/
 
-SmallShell::SmallShell() {
+SmallShell::SmallShell():currcmd(nullptr) {
     prompt_name = "smash";
     jobs = new JobsList();
     plastPwd = "";
@@ -145,7 +145,7 @@ Command *SmallShell::CreateCommand(const string cmd_line, int out, int in, int e
     else if ("kill" == command_name)
         return new KillCommand(cmd_line, jobs, out, in, err);
     else if ("fg" == command_name)
-        return new ForegroundCommand(cmd_line, jobs, out, in, err);
+        return new ForegroundCommand(cmd_line, jobs, this, out, in, err);
     else if ("bg" == command_name)
         return new BackgroundCommand(cmd_line, jobs, out, in, err);
     else if ("quit" == command_name || "quit&" == command_name)
@@ -173,6 +173,14 @@ void SmallShell::setPidInFG(pid_t pid) {
 
 int SmallShell::getPidInFG() {
     return curr_pid;
+}
+
+void SmallShell::setCommand(Command *cmd) {
+    currcmd = cmd;
+}
+
+Command *SmallShell::getCommand() {
+    return currcmd;
 }
 
 /********************************/
@@ -241,8 +249,8 @@ KillCommand::KillCommand(const string cmd_line, JobsList *jobs, int out, int in,
         BuiltInCommand(cmd_line, out, in, err), jobs(jobs) {
 }
 
-ForegroundCommand::ForegroundCommand(const string cmd_line, JobsList *jobs, int out, int in, int err) :
-        BuiltInCommand(cmd_line, out, in, err), jobs(jobs) {
+ForegroundCommand::ForegroundCommand(const string cmd_line, JobsList *jobs, SmallShell *smash, int out, int in, int err)
+        : BuiltInCommand(cmd_line, out, in, err), jobs(jobs), smash(smash) {
 }
 
 BackgroundCommand::BackgroundCommand(const string cmd_line, JobsList *jobs, int out, int in, int err) :
@@ -490,6 +498,7 @@ void KillCommand::execute() {
 
 void ForegroundCommand::execute() {
     jobs->removeFinishedJobs();
+    int check;
     if (jobs->jobs_list->empty() && cmd[1].empty()) {
         string print = "smash error: fg: jobs list is empty\n";
         const char *p = print.c_str();
@@ -509,16 +518,25 @@ void ForegroundCommand::execute() {
             write(err, p, print.size());
             return;
         }
-
         if (job) {
             job->setMode(2);
             jobs->removeJobById(id);
             string print = job->getJob() + " : " + to_string(job->getPid()) + "\n";
-            const char *p = print.c_str();
-            write(out, p, print.size());
-            kill(job->getPid(), SIGCONT);
-            if (waitpid(job->getPid(), nullptr, 0) == -1)
-                perror("smash error: waitpid failed");
+            write(out, print.c_str(), print.size());
+
+            smash->setCommand(this);
+            smash->setPidInFG(job->getPid());
+            pid_t extpid = fork();
+            if (extpid == 0) {//son
+                dup2(in, 0);
+                dup2(out, 1);
+                dup2(err, 2);
+                kill(job->getPid(), SIGCONT);
+                exit(2);
+
+            } else
+                   waitpid(job->getPid(), &check, WUNTRACED);
+
         } else {
             string print = "smash error: fg: job-id " + to_string(id) + " does not exist\n";
             const char *p = print.c_str();
@@ -611,10 +629,11 @@ void RedirectionCommand::execute() {
 
 void ExternalCommand::execute() {
     int check;
-    char *c = "-c";
+    char *c = (char *) "-c";
     bool bg = _isBackgroundComamnd(cmd_line);
+    smash->setCommand(this);
     pid_t extpid = fork();
-    smash->setPidInFG(getpid());
+    smash->setPidInFG(extpid);
     string temp;
     if (bg) {
         jobs->addJob(this, extpid, 1);
@@ -625,11 +644,10 @@ void ExternalCommand::execute() {
         dup2(in, 0);
         dup2(out, 1);
         dup2(err, 2);
-        char *argv[] = {"/bin/bash", c, (char *) temp.c_str(), nullptr};
+        char *argv[] = {(char *) "/bin/bash", c, (char *) temp.c_str(), nullptr};
         execv("/bin/bash", argv);
-        cout << "fail" << endl;
     } else if (!bg) { //father
-        waitpid(extpid, &check, 0);
+        waitpid(extpid, &check, WUNTRACED);
     }
 }
 
