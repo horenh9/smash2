@@ -23,10 +23,19 @@ void ctrlZHandler(int sig_num) {
 }
 
 void ctrlCHandler(int sig_num) {
-    // TODO: Add your implementation
+    SmallShell &smash = SmallShell::getInstance();
+    cout << "smash: got ctrl-C" << endl;
+    if (smash.getPidInFG() != -1)
+        kill(smash.getPidInFG(), SIGKILL);
+    cout << "smash: process " + to_string(smash.getPidInFG()) + " was killed" << endl;
+    smash.setCommand(nullptr);
+    smash.setJob(nullptr);
+    smash.setPidInFG(-1);
 }
 
 void alarmHandler(int sig_num) {
-    // TODO: Add your implementation
+    SmallShell &smash = SmallShell::getInstance();
+    cout << "smash got an alarm" << endl;
+    kill(smash.getPidInFG(), SIGKILL);
 }
 

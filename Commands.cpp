@@ -79,32 +79,6 @@ void _removeBackgroundSign(string cmd_line) {
     cmd_line[str.find_last_not_of(WHITESPACE, idx) + 1] = 0;
 }
 
-string delete_2last(string *cmd) {
-    string str = "";
-    int count = 0;
-    while (count < COMMAND_MAX_ARGS - 2 && !cmd[count].empty()) {
-        if (!cmd[count + 2].empty())
-            str += cmd[count] + " ";
-        count++;
-    }
-    return str;
-}
-
-string last_word(string *cmd) {
-    string str = "";
-    int count = 0;
-    while (!cmd[count].empty())
-        count++;
-    if (cmd[count] == "&")
-        str = cmd[count - 2];
-    else {
-        if (_isBackgroundComamnd(cmd[count - 1]))
-            str = cmd[count - 1].substr(0, cmd[count - 1].size() - 1);
-        else
-            str = cmd[count - 1];
-    }
-    return str;
-}
 
 
 /******************** Small Shell ************/
@@ -545,6 +519,7 @@ void ForegroundCommand::execute() {
             smash->setPidInFG(job->getPid());
             pid_t extpid = fork();
             if (extpid == 0) {//son
+                setpgrp();
                 dup2(in, 0);
                 dup2(out, 1);
                 dup2(err, 2);
@@ -629,20 +604,32 @@ void QuitCommand::execute() {
 }
 
 /******************** executes************/
+void arrange_cmd(string cmd_line, string *actual_cmd, string *file) {
+    int pos1 = cmd_line.find_first_of('>');
+    int pos2 = cmd_line.find_last_of('>');
+    if (pos1 == pos2) {// '>' redirection
+        *actual_cmd = _trim(cmd_line.substr(0, pos1));
+        *file = _trim(cmd_line.substr(pos1 + 1, cmd_line.length() - pos1 - 1));
+    } else {// '>>' redirection
+        *actual_cmd = _trim(cmd_line.substr(0, pos1));
+        *file = _trim(cmd_line.substr(pos2 + 1, cmd_line.length() - pos2 - 1));
+    }
+}
 
 void RedirectionCommand::execute() {
     int fd;
-//    string *temp = cut_spaces(cmd, cmd->size());
-    const char *lastword = last_word(cmd).c_str();
+    string actual_cmd;
+    string file_name;
+    arrange_cmd(cmd_line, &actual_cmd, &file_name);
     if (cmd_line.find(">>") != string::npos)
-        fd = open(lastword, O_WRONLY | O_CREAT | O_APPEND, 0666);
+        fd = open(file_name.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0666);
     else
-        fd = open(lastword, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        fd = open(file_name.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd == -1) {
         perror("smash error: open failed");
         return;
     }
-    Command *comm = smash->CreateCommand(delete_2last(cmd), fd);
+    Command *comm = smash->CreateCommand(actual_cmd, fd);
     comm->execute();
     if (close(fd) == -1)
         perror("smash error: close failed");
@@ -662,11 +649,13 @@ void ExternalCommand::execute() {
     } else
         temp = cmd_line;
     if (extpid == 0) {//son
+        setpgrp();
         dup2(in, 0);
         dup2(out, 1);
         dup2(err, 2);
         char *argv[] = {(char *) "/bin/bash", c, (char *) temp.c_str(), nullptr};
         execv("/bin/bash", argv);
+
     } else if (!bg) { //father
         waitpid(extpid, &check, WUNTRACED);
         smash->setJob(nullptr);
@@ -686,8 +675,23 @@ void PipeCommand::execute() {
     else
         cmd1 = smash->CreateCommand(command1, out, in, fd[1]);
     cmd2 = smash->CreateCommand(command2, out, fd[0]);
-    cmd1->execute();
-    close(fd[1]);
-    cmd2->execute();
-    close(fd[0]);
+
+    pid_t pid1 = fork();
+    if (pid1 == 0) { //son
+        close(fd[0]);
+        cmd1->execute();
+        close(fd[1]);
+    } else { //father
+        close(fd[1]);
+        pid_t pid2 = fork();
+        if (pid2 == 0) {
+            cmd2->execute();
+            close(fd[0]);
+        } else {
+            close(fd[0]);
+            waitpid(pid1, nullptr, WNOHANG);
+            waitpid(pid2, nullptr, WNOHANG);
+        }
+
+    }
 }
