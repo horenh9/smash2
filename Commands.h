@@ -25,7 +25,7 @@ public:
 
     string *getJob() const;
 
-    Command(const string cmd_line, int out = 1, int in = 0, int err = 2);
+    explicit Command(const string& cmd_line, int out = 1, int in = 0, int err = 2);
 
     virtual ~Command();
 
@@ -57,8 +57,6 @@ public:
         int getMode() const;
 
         void setMode(int mode);
-
-        void setPid(int pid);
 
         Command *getCommand();
 
@@ -95,10 +93,10 @@ class ExternalCommand : public Command {
     JobsList *jobs;
     SmallShell *smash;
 public:
-    explicit ExternalCommand(const string cmd_line, JobsList *jobs, SmallShell *smash,
+    explicit ExternalCommand(const string& cmd_line, JobsList *jobs, SmallShell *smash,
                              int out = 1, int in = 0, int err = 2);
 
-    virtual ~ExternalCommand() {};
+    ~ExternalCommand() override = default;
 
     void execute() override;
 };
@@ -111,9 +109,9 @@ class PipeCommand : public Command {
     Command *cmd1;
     Command *cmd2;
 public:
-    explicit PipeCommand(const string cmd_line, SmallShell *smash);
+    explicit PipeCommand(const string& cmd_line, SmallShell *smash);
 
-    virtual ~PipeCommand();
+    ~PipeCommand() override;
 
     void execute() override;
 };
@@ -121,29 +119,28 @@ public:
 class RedirectionCommand : public Command {
     SmallShell *smash;
 public:
-    explicit RedirectionCommand(const string cmd_line, SmallShell *smash);
+    explicit RedirectionCommand(const string& cmd_line, SmallShell *smash);
 
-    virtual ~RedirectionCommand() = default;
+    ~RedirectionCommand() override = default;
 
     void execute() override;
     //void prepare() override;
     //void cleanup() override;
 };
 
-
 class BuiltInCommand : public Command {
 public:
-    explicit BuiltInCommand(const string cmd_line, int out = 1, int in = 0, int err = 2);
+    explicit BuiltInCommand(const string& cmd_line, int out = 1, int in = 0, int err = 2);
 
-    virtual ~BuiltInCommand() {};
+    ~BuiltInCommand() override = default;
 };
 
 class ChangePrompt : public BuiltInCommand {
     string *prompt;
 public:
-    explicit ChangePrompt(const string cmd_line, string *prompt_name);
+    explicit ChangePrompt(const string& cmd_line, string *prompt_name);
 
-    virtual ~ChangePrompt() {};
+    ~ChangePrompt() override = default;
 
     void execute() override;
 };
@@ -151,18 +148,18 @@ public:
 class ShowPidCommand : public BuiltInCommand {
     SmallShell *smash;
 public:
-    explicit ShowPidCommand(const string cmd_line, SmallShell *smash, int out = 1, int in = 0, int err = 2);
+    explicit ShowPidCommand(const string& cmd_line, SmallShell *smash, int out = 1, int in = 0, int err = 2);
 
-    virtual ~ShowPidCommand() {};
+    ~ShowPidCommand() override = default;;
 
     void execute() override;
 };
 
 class GetCurrDirCommand : public BuiltInCommand {
 public:
-    explicit GetCurrDirCommand(const string cmd_line, int out = 1, int in = 0, int err = 2);
+    explicit GetCurrDirCommand(const string& cmd_line, int out = 1, int in = 0, int err = 2);
 
-    virtual ~GetCurrDirCommand() {};
+    ~GetCurrDirCommand() override = default;;
 
     void execute() override;
 };
@@ -170,9 +167,9 @@ public:
 class ChangeDirCommand : public BuiltInCommand {
     string *OLDPWD;
 public:
-    ChangeDirCommand(const string cmd_line, string *plastPwd, int out = 1, int in = 0, int err = 2);
+    ChangeDirCommand(const string& cmd_line, string *plastPwd, int out = 1, int in = 0, int err = 2);
 
-    virtual ~ChangeDirCommand() {};
+    ~ChangeDirCommand() override = default;;
 
     void execute() override;
 };
@@ -180,9 +177,9 @@ public:
 class JobsCommand : public BuiltInCommand {
     JobsList *jobs;
 public:
-    JobsCommand(const string cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
+    JobsCommand(const string& cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
-    virtual ~JobsCommand() {};
+    ~JobsCommand() override = default;;
 
     void execute() override;
 };
@@ -190,9 +187,9 @@ public:
 class KillCommand : public BuiltInCommand {
     JobsList *jobs;
 public:
-    KillCommand(string cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
+    KillCommand(const string& cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
-    virtual ~KillCommand() {};
+    ~KillCommand() override = default;;
 
     void execute() override;
 };
@@ -201,9 +198,9 @@ class ForegroundCommand : public BuiltInCommand {
     JobsList *jobs;
     SmallShell *smash;
 public:
-    ForegroundCommand(const string cmd_line, JobsList *jobs, SmallShell *smash, int out = 1, int in = 0, int err = 2);
+    ForegroundCommand(const string& cmd_line, JobsList *jobs, SmallShell *smash, int out = 1, int in = 0, int err = 2);
 
-    virtual ~ForegroundCommand() {};
+    ~ForegroundCommand() override = default;
 
     void execute() override;
 };
@@ -212,20 +209,19 @@ class BackgroundCommand : public BuiltInCommand {
     // TODO: Add your data members
     JobsList *jobs;
 public:
-    BackgroundCommand(const string cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
+    BackgroundCommand(const string& cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
-    virtual ~BackgroundCommand() {};
+    ~BackgroundCommand() override = default;
 
     void execute() override;
 };
 
 class QuitCommand : public BuiltInCommand {
-// TODO: Add your data members public:
     JobsList *jobs;
 public:
-    QuitCommand(const string cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
+    QuitCommand(const string& cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
-    virtual ~QuitCommand() {};
+    ~QuitCommand() override = default;;
 
     void execute() override;
 };
@@ -271,7 +267,7 @@ public:
 
     void setPidInFG(pid_t pid);
 
-    Command *CreateCommand(const string cmd_line, int out = 1, int in = 0, int err = 2);
+    Command *CreateCommand(const string& cmd_line, int out = 1, int in = 0, int err = 2);
 
     SmallShell(SmallShell const &) = delete; // disable copy ctor
     void operator=(SmallShell const &) = delete; // disable = operator
@@ -285,7 +281,6 @@ public:
     ~SmallShell();
 
     void executeCommand(const string cmd_line);
-    // TODO: add extra methods as needed
 };
 
 #endif //SMASH_COMMAND_H_
