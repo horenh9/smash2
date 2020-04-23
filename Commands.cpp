@@ -109,7 +109,7 @@ string last_word(string *cmd) {
 
 /******************** Small Shell ************/
 
-SmallShell::SmallShell():currcmd(nullptr) {
+SmallShell::SmallShell() : currcmd(nullptr) {
     prompt_name = "smash";
     jobs = new JobsList();
     plastPwd = "";
@@ -175,12 +175,20 @@ int SmallShell::getPidInFG() {
     return curr_pid;
 }
 
-void SmallShell::setCommand(Command *cmd) {
-    currcmd = cmd;
+void SmallShell::setJob(JobsList::JobEntry *job) {
+    currjob = job;
 }
 
 Command *SmallShell::getCommand() {
     return currcmd;
+}
+
+void SmallShell::setCommand(Command *cmd) {
+    currcmd = cmd;
+}
+
+JobsList::JobEntry *SmallShell::getJob() {
+    return currjob;
 }
 
 /********************************/
@@ -279,8 +287,8 @@ JobsList::~JobsList() {
     delete jobs_list;
 }
 
-JobsList::JobEntry::JobEntry(string *job, int jobId, int pid, int mode) : jobId(jobId), pid(pid), mode(mode),
-                                                                          begin(time(0)) {
+JobsList::JobEntry::JobEntry(string *job, int jobId, int pid, int mode, Command *cmd) :
+        jobId(jobId), pid(pid), mode(mode), begin(time(0)), cmd(cmd) {
     int i = 0;
     job_name = "";
     while (job[i] != "") {
@@ -292,7 +300,7 @@ JobsList::JobEntry::JobEntry(string *job, int jobId, int pid, int mode) : jobId(
 
 int JobsList::addJob(Command *cmd, int pid, int mode) {
     removeFinishedJobs();
-    JobEntry job = JobEntry(cmd->getJob(), max + 1, pid, mode);
+    JobEntry job = JobEntry(cmd->getJob(), max + 1, pid, mode, cmd);
     jobs_list->push_back(job);
     return job.getJobId();
 }
@@ -374,6 +382,10 @@ JobsList::JobEntry *JobsList::getLastStoppedJob(int *jobId) {
     return maxStopped;
 }
 
+void JobsList::addJob(JobEntry *job) {
+    jobs_list->push_back(*job);
+}
+
 /******************** Getters/Setters************/
 
 string *Command::getJob() const {
@@ -402,6 +414,10 @@ string JobsList::JobEntry::getJob() const {
 
 void JobsList::JobEntry::setMode(int new_mode) {
     mode = new_mode;
+}
+
+Command *JobsList::JobEntry::getCommand() {
+    return cmd;
 }
 
 /******************** Built in command executes************/
@@ -524,7 +540,8 @@ void ForegroundCommand::execute() {
             string print = job->getJob() + " : " + to_string(job->getPid()) + "\n";
             write(out, print.c_str(), print.size());
 
-            smash->setCommand(this);
+            smash->setJob(job);
+            smash->setCommand(job->getCommand());
             smash->setPidInFG(job->getPid());
             pid_t extpid = fork();
             if (extpid == 0) {//son
@@ -534,8 +551,12 @@ void ForegroundCommand::execute() {
                 kill(job->getPid(), SIGCONT);
                 exit(2);
 
-            } else
-                   waitpid(job->getPid(), &check, WUNTRACED);
+            } else {
+                waitpid(job->getPid(), &check, WUNTRACED);
+                smash->setCommand(nullptr);
+                smash->setJob(nullptr);
+                smash->setPidInFG(-1);
+            }
 
         } else {
             string print = "smash error: fg: job-id " + to_string(id) + " does not exist\n";
@@ -648,6 +669,8 @@ void ExternalCommand::execute() {
         execv("/bin/bash", argv);
     } else if (!bg) { //father
         waitpid(extpid, &check, WUNTRACED);
+        smash->setJob(nullptr);
+        smash->setPidInFG(-1);
     }
 }
 

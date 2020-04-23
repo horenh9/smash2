@@ -43,6 +43,8 @@ public:
         int pid;
         int mode;//0 = stopped, 1 = bg, 2 = fg, 3 = done
         time_t begin;
+        Command *cmd;
+
     public:
         int getJobId() const;
 
@@ -58,7 +60,9 @@ public:
 
         void setPid(int pid);
 
-        JobEntry(string *job, int jobId, int pid, int mode);
+        Command *getCommand();
+
+        JobEntry(string *job, int jobId, int pid, int mode, Command *cmd);
     };
 
     list <JobEntry> *jobs_list;
@@ -69,6 +73,8 @@ public:
     ~JobsList();
 
     int addJob(Command *cmd, int pid, int mode);
+
+    void addJob(JobEntry *job);
 
     void printJobsList(int out);
 
@@ -242,6 +248,8 @@ class SmallShell {
     string plastPwd;
     pid_t curr_pid;
     Command *currcmd;
+    JobsList::JobEntry *currjob;
+
 public:
     JobsList *jobs;
 
@@ -252,6 +260,10 @@ public:
     int getPid();
 
     int getPidInFG();
+
+    void setJob(JobsList::JobEntry *job);
+
+    JobsList::JobEntry *getJob();
 
     void setCommand(Command *cmd);
 

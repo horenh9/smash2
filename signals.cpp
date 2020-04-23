@@ -7,10 +7,19 @@
 using namespace std;
 
 void ctrlZHandler(int sig_num) {
-    SmallShell &shell = SmallShell::getInstance();
-    cout << "smash: got ctrl-Z " + to_string(shell.getPidInFG()) << endl;
-    kill(shell.getPidInFG(), SIGSTOP);
-    shell.jobs->addJob(shell.getCommand(), shell.getPidInFG(), 0);
+    SmallShell &smash = SmallShell::getInstance();
+    cout << "smash: got ctrl-Z" << endl;
+    if (smash.getPidInFG() != -1) {
+        kill(smash.getPidInFG(), SIGTSTP);
+        if (smash.getJob())
+            smash.jobs->addJob(smash.getJob());
+        else
+            smash.jobs->addJob(smash.getCommand(), smash.getPidInFG(), 0);
+        cout << "smash: process " + to_string(smash.getPidInFG()) + " was stopped" << endl;
+        smash.setCommand(nullptr);
+        smash.setJob(nullptr);
+        smash.setPidInFG(-1);
+    }
 }
 
 void ctrlCHandler(int sig_num) {
