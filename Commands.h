@@ -9,6 +9,7 @@
 using namespace std;
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
+#define SIZE_TO_READ (4096)
 
 class JobsList;
 
@@ -226,12 +227,15 @@ public:
     void execute() override;
 };
 
-// TODO: should it really inhirit from BuiltInCommand ?
 class CopyCommand : public BuiltInCommand {
+    string path1;
+    string path2;
+    JobsList *jobs;
+    SmallShell *smash;
 public:
-    CopyCommand(const string cmd_line);
+    explicit CopyCommand(const string& cmd_line, JobsList *jobs, SmallShell *smash, int out = 1, int in = 0, int err = 2);
 
-    virtual ~CopyCommand() {};
+    ~CopyCommand() override = default;;
 
     void execute() override;
 };
@@ -280,7 +284,7 @@ public:
 
     ~SmallShell();
 
-    void executeCommand(const string cmd_line);
+    void executeCommand(const string& cmd_line);
 };
 
 #endif //SMASH_COMMAND_H_
