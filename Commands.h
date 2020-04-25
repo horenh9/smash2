@@ -11,6 +11,8 @@ using namespace std;
 #define COMMAND_MAX_ARGS (20)
 #define SIZE_TO_READ (4096)
 
+void write_to(string print, int out);
+
 class JobsList;
 
 class SmallShell;
@@ -26,7 +28,7 @@ public:
 
     string *getJob() const;
 
-    explicit Command(const string& cmd_line, int out = 1, int in = 0, int err = 2);
+    explicit Command(const string &cmd_line, int out = 1, int in = 0, int err = 2);
 
     virtual ~Command();
 
@@ -94,7 +96,7 @@ class ExternalCommand : public Command {
     JobsList *jobs;
     SmallShell *smash;
 public:
-    explicit ExternalCommand(const string& cmd_line, JobsList *jobs, SmallShell *smash,
+    explicit ExternalCommand(const string &cmd_line, JobsList *jobs, SmallShell *smash,
                              int out = 1, int in = 0, int err = 2);
 
     ~ExternalCommand() override = default;
@@ -110,7 +112,7 @@ class PipeCommand : public Command {
     Command *cmd1;
     Command *cmd2;
 public:
-    explicit PipeCommand(const string& cmd_line, SmallShell *smash);
+    explicit PipeCommand(const string &cmd_line, SmallShell *smash);
 
     ~PipeCommand() override;
 
@@ -120,18 +122,30 @@ public:
 class RedirectionCommand : public Command {
     SmallShell *smash;
 public:
-    explicit RedirectionCommand(const string& cmd_line, SmallShell *smash);
+    explicit RedirectionCommand(const string &cmd_line, SmallShell *smash);
 
     ~RedirectionCommand() override = default;
 
     void execute() override;
-    //void prepare() override;
-    //void cleanup() override;
 };
+
+class TimeoutCommand : public Command {
+    SmallShell *smash;
+    Command *actual_cmd;
+    JobsList *jobs;
+    int duration;
+public:
+    explicit TimeoutCommand(const string &cmd_line, SmallShell *smash, JobsList *jobs);
+
+    ~TimeoutCommand() override = default;
+
+    void execute() override;
+};
+
 
 class BuiltInCommand : public Command {
 public:
-    explicit BuiltInCommand(const string& cmd_line, int out = 1, int in = 0, int err = 2);
+    explicit BuiltInCommand(const string &cmd_line, int out = 1, int in = 0, int err = 2);
 
     ~BuiltInCommand() override = default;
 };
@@ -139,7 +153,7 @@ public:
 class ChangePrompt : public BuiltInCommand {
     string *prompt;
 public:
-    explicit ChangePrompt(const string& cmd_line, string *prompt_name);
+    explicit ChangePrompt(const string &cmd_line, string *prompt_name);
 
     ~ChangePrompt() override = default;
 
@@ -149,7 +163,7 @@ public:
 class ShowPidCommand : public BuiltInCommand {
     SmallShell *smash;
 public:
-    explicit ShowPidCommand(const string& cmd_line, SmallShell *smash, int out = 1, int in = 0, int err = 2);
+    explicit ShowPidCommand(const string &cmd_line, SmallShell *smash, int out = 1, int in = 0, int err = 2);
 
     ~ShowPidCommand() override = default;;
 
@@ -158,7 +172,7 @@ public:
 
 class GetCurrDirCommand : public BuiltInCommand {
 public:
-    explicit GetCurrDirCommand(const string& cmd_line, int out = 1, int in = 0, int err = 2);
+    explicit GetCurrDirCommand(const string &cmd_line, int out = 1, int in = 0, int err = 2);
 
     ~GetCurrDirCommand() override = default;;
 
@@ -168,7 +182,7 @@ public:
 class ChangeDirCommand : public BuiltInCommand {
     string *OLDPWD;
 public:
-    ChangeDirCommand(const string& cmd_line, string *plastPwd, int out = 1, int in = 0, int err = 2);
+    ChangeDirCommand(const string &cmd_line, string *plastPwd, int out = 1, int in = 0, int err = 2);
 
     ~ChangeDirCommand() override = default;;
 
@@ -178,7 +192,7 @@ public:
 class JobsCommand : public BuiltInCommand {
     JobsList *jobs;
 public:
-    JobsCommand(const string& cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
+    JobsCommand(const string &cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
     ~JobsCommand() override = default;;
 
@@ -188,7 +202,7 @@ public:
 class KillCommand : public BuiltInCommand {
     JobsList *jobs;
 public:
-    KillCommand(const string& cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
+    KillCommand(const string &cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
     ~KillCommand() override = default;;
 
@@ -199,7 +213,7 @@ class ForegroundCommand : public BuiltInCommand {
     JobsList *jobs;
     SmallShell *smash;
 public:
-    ForegroundCommand(const string& cmd_line, JobsList *jobs, SmallShell *smash, int out = 1, int in = 0, int err = 2);
+    ForegroundCommand(const string &cmd_line, JobsList *jobs, SmallShell *smash, int out = 1, int in = 0, int err = 2);
 
     ~ForegroundCommand() override = default;
 
@@ -207,10 +221,9 @@ public:
 };
 
 class BackgroundCommand : public BuiltInCommand {
-    // TODO: Add your data members
     JobsList *jobs;
 public:
-    BackgroundCommand(const string& cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
+    BackgroundCommand(const string &cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
     ~BackgroundCommand() override = default;
 
@@ -220,7 +233,7 @@ public:
 class QuitCommand : public BuiltInCommand {
     JobsList *jobs;
 public:
-    QuitCommand(const string& cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
+    QuitCommand(const string &cmd_line, JobsList *jobs, int out = 1, int in = 0, int err = 2);
 
     ~QuitCommand() override = default;;
 
@@ -233,15 +246,13 @@ class CopyCommand : public BuiltInCommand {
     JobsList *jobs;
     SmallShell *smash;
 public:
-    explicit CopyCommand(const string& cmd_line, JobsList *jobs, SmallShell *smash, int out = 1, int in = 0, int err = 2);
+    explicit CopyCommand(const string &cmd_line, JobsList *jobs, SmallShell *smash, int out = 1, int in = 0,
+                         int err = 2);
 
     ~CopyCommand() override = default;;
 
     void execute() override;
 };
-
-// TODO: add more classes if needed 
-// maybe chprompt , timeout ?
 
 class SmallShell {
     int pid;
@@ -249,6 +260,7 @@ class SmallShell {
     pid_t curr_pid;
     Command *currcmd;
     JobsList::JobEntry *currjob;
+    int out;
 
 public:
     JobsList *jobs;
@@ -258,6 +270,10 @@ public:
     SmallShell();
 
     int getPid();
+
+    int getOut();
+
+    void setOut(int fd);
 
     int getPidInFG();
 
@@ -271,7 +287,7 @@ public:
 
     void setPidInFG(pid_t pid);
 
-    Command *CreateCommand(const string& cmd_line, int out = 1, int in = 0, int err = 2);
+    Command *CreateCommand(const string &cmd_line, int out = 1, int in = 0, int err = 2);
 
     SmallShell(SmallShell const &) = delete; // disable copy ctor
     void operator=(SmallShell const &) = delete; // disable = operator
@@ -284,7 +300,9 @@ public:
 
     ~SmallShell();
 
-    void executeCommand(const string& cmd_line);
+    void executeCommand(const string &cmd_line);
+
+    void setNulls(bool out = true);
 };
 
 #endif //SMASH_COMMAND_H_
