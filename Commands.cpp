@@ -99,6 +99,11 @@ void SmallShell::setOut(int fd) {
     out = fd;
 }
 
+void JobsList::JobEntry::restartTime() {
+    begin = time(nullptr);
+}
+
+
 /******************** strings shit ************/
 
 void write_to(string print, int out) {
@@ -141,7 +146,7 @@ void arrange_cmd(const string &cmd_line, string *part1, string *part2, char op1,
     temp = temp.substr(0, temp.length() - 1);
     int pos1 = temp.find_first_of(op1);
     int pos2 = temp.find_last_of(op2);
-    if (pos2 == string::npos)
+    if (unsigned (pos2) == string::npos)
         pos2 = pos1;
     if (pos1 == pos2) {// '>' redirection or '|' pipe
         *part1 = _trim(cmd_line.substr(0, pos1));
@@ -239,6 +244,7 @@ JobsList::JobEntry::JobEntry(string *job, int jobId, int pid, int mode, Command 
     job_name.substr(job_name.size(), 1);
 }
 
+
 int JobsList::addJob(Command *cmd, int pid, int mode) {
     removeFinishedJobs();
     JobEntry job = JobEntry(cmd->getJob(), max + 1, pid, mode, cmd);
@@ -327,6 +333,7 @@ void JobsList::addJob(JobEntry *job) {
     for (auto it = jobs_list->begin(); it != jobs_list->end(); ++it) {
         if (it->getJobId() < job->getJobId() && (it++) != jobs_list->end() && it->getJobId() > job->getJobId()) {
             job->setMode(0);
+            job->restartTime();
             jobs_list->insert(it, *job);
             return;
         }
@@ -514,12 +521,13 @@ void KillCommand::execute() {
             write_to(print, out);
             return;
         }
-        if (cmd[1].at(0) != '-' || !cmd[3].empty()) {
+        int sigNum = stoi(cmd[1].substr(1, cmd[1].length() - 1));
+        if (cmd[1].at(0) != '-' || !cmd[3].empty() || sigNum < 0 || sigNum > 31) {
             string print = "smash error: kill: invalid arguments\n";
             write_to(print, out);
             return;
         }
-        string print = "signal number " + cmd[1].substr(1, cmd[1].length() - 1) + " was sent to pid "
+        string print = "signal number " + to_string(sigNum) + " was sent to pid "
                        + to_string(jobs->getJobById(id)->getPid()) + "\n";
         write_to(print, out);
         kill(jobs->getJobById(id)->getPid(), stoi(cmd[1].substr(1, cmd[1].length() - 1)));
@@ -644,6 +652,8 @@ void CopyCommand::execute() {
         smash->setNulls();
         jobs->addJob(this, cppid, 1);
         temp = cmd_line.substr(0, cmd_line.size() - 1);
+        if (_isBackgroundComamnd(path2))
+            path2 = path2.substr(0, path2.length() - 1);
     } else
         temp = cmd_line;
 
@@ -678,11 +688,11 @@ void CopyCommand::execute() {
             }
         }
         delete[] buf;
+        string print = "smash " + path1 + " was copied to " + path2 + "\n";
+        write(out, print.c_str(), print.size());
         exit(2);
     } else if (!bg) { //father
         waitpid(cppid, nullptr, WUNTRACED);
-        string print = "smash " + path1 + " was copied to " + path2 + "\n";
-        write(out, print.c_str(), print.size());
         smash->setNulls();
     }
 }
@@ -754,6 +764,7 @@ void PipeCommand::execute() {
 
     pid_t pid1 = fork();
     if (pid1 == 0) { //son
+        setpgrp();
         close(fd[0]);
         cmd1->execute();
         close(fd[1]);
@@ -762,13 +773,14 @@ void PipeCommand::execute() {
         close(fd[1]);
         pid_t pid2 = fork();
         if (pid2 == 0) {
+            setpgrp();
             cmd2->execute();
             close(fd[0]);
             exit(2);
         } else {
             close(fd[0]);
-            waitpid(pid1, nullptr, 0);
-            waitpid(pid2, nullptr, 0);
+            waitpid(pid1, nullptr, WUNTRACED);
+            waitpid(pid2, nullptr, WUNTRACED);
         }
 
     }

@@ -61,6 +61,8 @@ public:
 
         void setMode(int mode);
 
+        void restartTime();
+
         Command *getCommand();
 
         JobEntry(string *job, int jobId, int pid, int mode, Command *cmd);
