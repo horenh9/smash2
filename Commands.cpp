@@ -24,10 +24,6 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define FUNC_EXIT()
 #endif
 
-#define DEBUG_PRINT cerr << "DEBUG: "
-
-#define EXEC(path, arg) \
-  execvp((path), (arg));
 
 /******************** Getters/Setters************/
 
@@ -141,19 +137,34 @@ bool _isBackgroundComamnd(const string &cmd_line) {
     return str[str.find_last_not_of(WHITESPACE)] == '&';
 }
 
-void arrange_cmd(const string &cmd_line, string *part1, string *part2, char op1, char op2) {//
+
+void arrange_cmd_redirection(string cmd_line, string *actual_cmd, string *file) {
+    string temp = _trim(cmd_line);
+    if (_isBackgroundComamnd(temp))
+        temp = temp.substr(0, temp.length() - 1);
+    int pos1 = temp.find_first_of('>');
+    int pos2 = temp.find_last_of('>');
+    if (pos1 == pos2) {// '>' redirection
+        *actual_cmd = _trim(temp.substr(0, pos1));
+        *file = _trim(temp.substr(pos1 + 1, cmd_line.length() - pos1 - 1));
+    } else {// '>>' redirection
+        *actual_cmd = _trim(temp.substr(0, pos1));
+        *file = _trim(temp.substr(pos2 + 1, cmd_line.length() - pos2 - 1));
+    }
+}
+
+void arrange_cmd_pipe(const string &cmd_line, string *cmd1, string *cmd2) {//
     string temp = _rtrim(cmd_line);
-    temp = temp.substr(0, temp.length() - 1);
-    int pos1 = temp.find_first_of(op1);
-    int pos2 = temp.find_last_of(op2);
-    if (unsigned (pos2) == string::npos)
-        pos2 = pos1;
-    if (pos1 == pos2) {// '>' redirection or '|' pipe
-        *part1 = _trim(cmd_line.substr(0, pos1));
-        *part2 = _trim(cmd_line.substr(pos1 + 1, _rtrim(cmd_line).length() - pos1 - 1));
-    } else {// '>>' redirection or "|&" pipe
-        *part1 = _trim(cmd_line.substr(0, pos1));
-        *part2 = _trim(cmd_line.substr(pos2 + 1, _rtrim(cmd_line).length() - pos2 - 1));
+    if (_isBackgroundComamnd(temp))
+        temp = temp.substr(0, temp.length() - 1);
+    int pos1 = temp.find_first_of('|');
+    int pos2 = temp.find_last_of('&');
+    if (pos2 == string::npos) {
+        *cmd1 = _trim(cmd_line.substr(0, pos1));
+        *cmd2 = _trim(cmd_line.substr(pos1 + 1, temp.length() - pos1 - 1));
+    } else {
+        *cmd1 = _trim(cmd_line.substr(0, pos1));
+        *cmd2 = _trim(cmd_line.substr(pos2 + 1, temp.length() - pos2 - 1));
     }
 }
 
@@ -234,20 +245,16 @@ JobsList::~JobsList() {
 }
 
 JobsList::JobEntry::JobEntry(string *job, int jobId, int pid, int mode, Command *cmd) :
-        jobId(jobId), pid(pid), mode(mode), begin(time(nullptr)), cmd(cmd) {
+        jobId(jobId), pid(pid), mode(mode), begin(time(nullptr)), cmd(cmd), isPipe(false) {
     int i = 0;
-    job_name = "";
-    while (!job[i].empty()) {
-        job_name += job[i] + " ";
-        i++;
-    }
-    job_name.substr(job_name.size(), 1);
+    job_name = cmd->cmd_line;
 }
 
 
-int JobsList::addJob(Command *cmd, int pid, int mode) {
+int JobsList::addJob(Command *cmd, int pid, int mode, bool isPiped) {
     removeFinishedJobs();
     JobEntry job = JobEntry(cmd->getJob(), max + 1, pid, mode, cmd);
+    job.isPipe = isPiped;
     jobs_list->push_back(job);
     return job.getJobId();
 }
@@ -269,7 +276,10 @@ void JobsList::killAllJobs(int out) {
     for (auto it = jobs_list->begin(); it != jobs_list->end(); ++it) {
         string print = to_string(it->getPid()) + ": " + it->getJob() + "\n";
         write_to(print, out);
-        kill(-9, it->getJobId());
+        if (it->isPipe)
+            killpg(-9, it->getJobId());
+        else
+            kill(-9, it->getJobId());
         ++it;
         removeJobById((--it)->getJobId());
         --it;
@@ -355,8 +365,9 @@ Command::~Command() {
     delete[] cmd;
 }
 
-ExternalCommand::ExternalCommand(const string &cmd_line, JobsList *jobs, SmallShell *smash, int out, int in, int err) :
-        Command(cmd_line, out, in, err), jobs(jobs), smash(smash) {}
+ExternalCommand::ExternalCommand(const string &cmd_line, JobsList *jobs, SmallShell *smash, int out, int in, int err,
+                                 bool piped) : Command(cmd_line, out, in, err), jobs(jobs), smash(smash),
+                                               extCommFromRed(nullptr), isPiped(piped) {}
 
 RedirectionCommand::RedirectionCommand(const string &cmd_line, SmallShell *smash) : Command(cmd_line), smash(smash) {
 }
@@ -367,7 +378,7 @@ PipeCommand::PipeCommand(const string &cmd_line, SmallShell *smash) :
         op = "|&";
     else
         op = "|";
-    arrange_cmd(cmd_line, &command1, &command2, '|', '&');
+    arrange_cmd_pipe(cmd_line, &command1, &command2);
 }
 
 PipeCommand::~PipeCommand() {
@@ -500,7 +511,7 @@ void ChangeDirCommand::execute() {
     if (getcwd(buf, COMMAND_ARGS_MAX_LENGTH) == nullptr) {
         perror("smash error: getcwd failed");
     } else {
-        if (chdir(temp.data()) == -1)        //go to wanted directory via syscall
+        if (chdir(temp.c_str()) == -1)        //go to wanted directory via syscall
             perror("smash error: chdir failed");
         else
             *OLDPWD = string(buf);
@@ -530,7 +541,10 @@ void KillCommand::execute() {
         string print = "signal number " + to_string(sigNum) + " was sent to pid "
                        + to_string(jobs->getJobById(id)->getPid()) + "\n";
         write_to(print, out);
-        kill(jobs->getJobById(id)->getPid(), stoi(cmd[1].substr(1, cmd[1].length() - 1)));
+        if (jobs->getJobById(id)->isPipe)
+            killpg(jobs->getJobById(id)->getPid(), stoi(cmd[1].substr(1, cmd[1].length() - 1)));
+        else
+            kill(jobs->getJobById(id)->getPid(), stoi(cmd[1].substr(1, cmd[1].length() - 1)));
     }
     catch (...) {
         string print = "smash error: kill: invalid arguments\n";
@@ -572,7 +586,10 @@ void ForegroundCommand::execute() {
                 dup2(in, 0);
                 dup2(out, 1);
                 dup2(err, 2);
-                kill(job->getPid(), SIGCONT);
+                if (job->isPipe)
+                    killpg(job->getPid(), SIGCONT);
+                else
+                    kill(job->getPid(), SIGCONT);
                 exit(2);
 
             } else {
@@ -623,7 +640,10 @@ void BackgroundCommand::execute() {
         job->setMode(1);
         string print = job->getJob() + " : " + to_string(job->getPid()) + "\n";
         write_to(print, out);
-        kill(job->getPid(), SIGCONT);
+        if (job->isPipe)
+            killpg(job->getPid(), SIGCONT);
+        else
+            kill(job->getPid(), SIGCONT);
     }
     catch (...) {
         string print = "smash error: bg: invalid arguments\n";
@@ -632,6 +652,7 @@ void BackgroundCommand::execute() {
 }
 
 void QuitCommand::execute() {
+    jobs->removeFinishedJobs();
     if (cmd[1] == "kill" || cmd[1] == "kill&") {
         int count = jobs->jobs_list->size();
         string print = "smash: sending SIGKILL signal to " + to_string(count) + " jobs:\n";
@@ -703,7 +724,7 @@ void RedirectionCommand::execute() {
     int fd;
     string actual_cmd;
     string file_name;
-    arrange_cmd(cmd_line, &actual_cmd, &file_name, '>', '>');
+    arrange_cmd_redirection(cmd_line, &actual_cmd, &file_name);
     if (cmd_line.find(">>") != string::npos)
         fd = open(file_name.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0666);
     else
@@ -715,7 +736,12 @@ void RedirectionCommand::execute() {
 
     Command *comm = smash->CreateCommand(actual_cmd, fd);
     smash->setOut(fd);
-    comm->execute();
+    auto *ext = dynamic_cast<ExternalCommand *> (comm);
+    if (ext != nullptr) {
+        ext->extCommFromRed = this;
+        ext->execute();
+    } else
+        comm->execute();
     if (close(fd) == -1)
         perror("smash error: close failed");
     smash->setOut(1);
@@ -724,19 +750,27 @@ void RedirectionCommand::execute() {
 void ExternalCommand::execute() {
     char *c = (char *) "-c";
     bool bg = _isBackgroundComamnd(cmd_line);
+    if (extCommFromRed != nullptr && _isBackgroundComamnd(extCommFromRed->cmd_line))
+        bg = true;
     smash->setCommand(this);
     pid_t extpid = fork();
     smash->setPidInFG(extpid);
     string temp;
     if (bg) {
         smash->setNulls(false);
-        jobs->addJob(this, extpid, 1);
-        temp = cmd_line.substr(0, cmd_line.size() - 1);
+        if (extCommFromRed == nullptr) {
+            jobs->addJob(this, extpid, 1);
+            temp = cmd_line.substr(0, cmd_line.size() - 1);
+        } else {
+            jobs->addJob(extCommFromRed, extpid, 1);
+            temp = cmd_line;
+        }
     } else
         temp = cmd_line;
 
     if (extpid == 0) {//son
-        setpgrp();
+        if (!isPiped)
+            setpgrp();
         dup2(in, 0);
         dup2(out, 1);
         dup2(err, 2);
@@ -761,10 +795,15 @@ void PipeCommand::execute() {
     else
         cmd1 = smash->CreateCommand(command1, out, in, fd[1]);
     cmd2 = smash->CreateCommand(command2, out, fd[0]);
-
+    ExternalCommand *ext1 = dynamic_cast<ExternalCommand *>(cmd1);
+    ExternalCommand *ext2 = dynamic_cast<ExternalCommand *>(cmd2);
+    if (ext1)
+        ext1->isPiped = true;
+    if (ext2)
+        ext2->isPiped = true;
+    smash->setCommand(this);
     pid_t pid1 = fork();
     if (pid1 == 0) { //son
-        setpgrp();
         close(fd[0]);
         cmd1->execute();
         close(fd[1]);
@@ -773,16 +812,31 @@ void PipeCommand::execute() {
         close(fd[1]);
         pid_t pid2 = fork();
         if (pid2 == 0) {
-            setpgrp();
+            setpgid(pid1, 0);
             cmd2->execute();
             close(fd[0]);
             exit(2);
         } else {
+            if (setpgid(pid1, 0) != 0) {
+                perror("setpgid() error");
+                return;
+            }
+            if (setpgid(pid2, getpgid(pid1)) != 0) {
+                perror("setpgid() error");
+                return;
+            }
             close(fd[0]);
-            waitpid(pid1, nullptr, WUNTRACED);
-            waitpid(pid2, nullptr, WUNTRACED);
-        }
+            if (!_isBackgroundComamnd(cmd_line)) {
 
+                smash->setPidInFG(pid1);
+                waitpid(pid1, nullptr, WUNTRACED);
+                waitpid(pid2, nullptr, WUNTRACED);
+                smash->setNulls();
+            } else {
+                smash->jobs->addJob(this, pid1, 1, true);
+                smash->setNulls();
+            }
+        }
     }
 }
 

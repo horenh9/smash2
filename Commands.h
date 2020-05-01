@@ -13,18 +13,20 @@ using namespace std;
 
 void write_to(string print, int out);
 
+class RedirectionCommand;
+
 class JobsList;
 
 class SmallShell;
 
 class Command {
 protected:
-    const string cmd_line;
     string *cmd;
     int out;
     int in;
     int err;
 public:
+    const string cmd_line;
 
     string *getJob() const;
 
@@ -43,12 +45,14 @@ public:
     class JobEntry {
         string job_name;
         int jobId;
-        int pid;
+        pid_t pid;
         int mode;//0 = stopped, 1 = bg, 2 = fg, 3 = done
         time_t begin;
         Command *cmd;
 
     public:
+        bool isPipe;
+
         int getJobId() const;
 
         string getJob() const;
@@ -75,7 +79,7 @@ public:
 
     ~JobsList();
 
-    int addJob(Command *cmd, int pid, int mode);
+    int addJob(Command *cmd, int pid, int mode, bool isPiped = false);
 
     void addJob(JobEntry *job);
 
@@ -98,8 +102,11 @@ class ExternalCommand : public Command {
     JobsList *jobs;
     SmallShell *smash;
 public:
+    bool isPiped;
+    RedirectionCommand *extCommFromRed;
+
     explicit ExternalCommand(const string &cmd_line, JobsList *jobs, SmallShell *smash,
-                             int out = 1, int in = 0, int err = 2);
+                             int out = 1, int in = 0, int err = 2, bool piped = false);
 
     ~ExternalCommand() override = default;
 
