@@ -9,21 +9,21 @@ using namespace std;
 
 void ctrlZHandler(int sig_num) {
     SmallShell &smash = SmallShell::getInstance();
-    string print = "smash: got ctrl-Z\n";
-    cout << "smash: got ctrl-Z" << endl;
+    string print = "smash: got ctrl-Z";
+    cout << print << endl;
     if (smash.getPidInFG() != -1) {
         if (dynamic_cast<PipeCommand *>(smash.getCommand()))
-            killpg(smash.getPidInFG(), SIGTSTP);
+            killpg(smash.getPidInFG(), SIGSTOP);
         else
-            kill(smash.getPidInFG(), SIGTSTP);
+            kill(smash.getPidInFG(), SIGSTOP);
         if (smash.getJob())
             smash.jobs->addJob(smash.getJob());
         else
             smash.jobs->addJob(smash.getCommand(), smash.getPidInFG(), 0);
         print = "smash: process " + to_string(smash.getPidInFG()) + " was stopped";
         cout << print << endl;
-        smash.setNulls();
     }
+    smash.setNulls();
 }
 
 void ctrlCHandler(int sig_num) {
@@ -52,3 +52,4 @@ void alarmHandler(int sig_num) {
     smash.setNulls();
 }
 
+//cp /dev/zero /dev/null

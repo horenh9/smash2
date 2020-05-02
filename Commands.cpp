@@ -8,6 +8,7 @@
 #include "Commands.h"
 #include <fcntl.h>
 #include <semaphore.h>
+#include <limits.h> /* PATH_MAX */
 
 using namespace std;
 
@@ -159,7 +160,7 @@ void arrange_cmd_pipe(const string &cmd_line, string *cmd1, string *cmd2) {//
         temp = temp.substr(0, temp.length() - 1);
     int pos1 = temp.find_first_of('|');
     int pos2 = temp.find_last_of('&');
-    if (pos2 == string::npos) {
+    if (pos2 == int(string::npos)) {
         *cmd1 = _trim(cmd_line.substr(0, pos1));
         *cmd2 = _trim(cmd_line.substr(pos1 + 1, temp.length() - pos1 - 1));
     } else {
@@ -245,15 +246,16 @@ JobsList::~JobsList() {
 }
 
 JobsList::JobEntry::JobEntry(string *job, int jobId, int pid, int mode, Command *cmd) :
-        jobId(jobId), pid(pid), mode(mode), begin(time(nullptr)), cmd(cmd), isPipe(false) {
-    int i = 0;
+        jobId(jobId), pid(pid), mode(mode), begin(time(nullptr)), cmd(cmd) {
+    isPipe = false;
     job_name = cmd->cmd_line;
 }
 
 
-int JobsList::addJob(Command *cmd, int pid, int mode, bool isPiped) {
+int JobsList::addJob(Command *cmd, int pid, int mode, bool isPiped, int counter) {
     removeFinishedJobs();
     JobEntry job = JobEntry(cmd->getJob(), max + 1, pid, mode, cmd);
+    job.counter = counter;
     job.isPipe = isPiped;
     jobs_list->push_back(job);
     return job.getJobId();
@@ -289,7 +291,21 @@ void JobsList::killAllJobs(int out) {
 void JobsList::removeFinishedJobs() {
     int currMax = 0, check = 0;
     for (auto it = jobs_list->begin(); it != jobs_list->end(); ++it) {
-        if (waitpid(it->getPid(), &check, WNOHANG) != 0) {
+        if (it->isPipe) {
+
+            for (;;) {
+                siginfo_t status = {0};
+                waitid(P_PGID, it->getPid(), &status, WNOHANG | WEXITED);
+                if (status.si_pid == 0) break;
+
+                it->counter--;
+            }
+            if (it->counter == 0) {
+                ++it;
+                removeJobById((--it)->getJobId());
+                --it;
+            }
+        } else if (waitpid(it->getPid(), &check, WNOHANG) != 0) {
             ++it;
             removeJobById((--it)->getJobId());
             --it;
@@ -353,7 +369,7 @@ void JobsList::addJob(JobEntry *job) {
 
 /******************** Command Constructors & Destructors************/
 
-Command::Command(const string &cmd_line, int out, int in, int err) : cmd_line(cmd_line), out(out), in(in), err(err) {
+Command::Command(const string &cmd_line, int out, int in, int err) : out(out), in(in), err(err), cmd_line(cmd_line) {
     cmd = new string[COMMAND_MAX_ARGS];
     for (int i = 0; i < COMMAND_MAX_ARGS; ++i)
         cmd[i] = "";
@@ -367,7 +383,7 @@ Command::~Command() {
 
 ExternalCommand::ExternalCommand(const string &cmd_line, JobsList *jobs, SmallShell *smash, int out, int in, int err,
                                  bool piped) : Command(cmd_line, out, in, err), jobs(jobs), smash(smash),
-                                               extCommFromRed(nullptr), isPiped(piped) {}
+                                               isPiped(piped), extCommFromRed(nullptr)  {}
 
 RedirectionCommand::RedirectionCommand(const string &cmd_line, SmallShell *smash) : Command(cmd_line), smash(smash) {
 }
@@ -454,7 +470,10 @@ QuitCommand::QuitCommand(const string &cmd_line, JobsList *jobs, int out, int in
 CopyCommand::CopyCommand(const string &cmd_line, JobsList *jobs, SmallShell *smash, int out, int in, int err) :
         BuiltInCommand(cmd_line, out, in, err), jobs(jobs), smash(smash) {
     path1 = cmd[1];
-    path2 = cmd[2];
+    if (_isBackgroundComamnd(cmd[2]))
+        path2 = cmd[2].substr(0, cmd[2].length() - 1);
+    else
+        path2 = cmd[2];
 }
 
 
@@ -573,8 +592,8 @@ void ForegroundCommand::execute() {
         }
         if (job) {
             job->setMode(2);
-            jobs->removeJobById(id);
             string print = job->getJob() + " : " + to_string(job->getPid()) + "\n";
+            jobs->removeJobById(id);
             write(out, print.c_str(), print.size());
 
             smash->setJob(job);
@@ -663,6 +682,28 @@ void QuitCommand::execute() {
 }
 
 void CopyCommand::execute() {
+    char buffer1[PATH_MAX];
+    char buffer2[PATH_MAX];
+    realpath(cmd[1].c_str(), buffer1);
+    realpath(cmd[2].c_str(), buffer2);
+    int src = open(path1.c_str(), O_RDONLY);
+    if (src == -1) {
+        perror("smash error: open failed");
+        return;
+    }
+
+    if (strcmp(buffer1, buffer2) == 0) {
+        close(src);
+        string print = "smash: " + path1 + " was copied to " + path2 + "\n";
+        write(out, print.c_str(), print.size());
+        return;
+    }
+    int dst = open(path2.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (dst == -1) {
+        close(src);
+        perror("smash error: open failed");
+        return;
+    }
     bool bg = _isBackgroundComamnd(cmd_line);
     smash->setCommand(this);
 
@@ -678,16 +719,6 @@ void CopyCommand::execute() {
     } else
         temp = cmd_line;
 
-    int src = open(path1.c_str(), O_RDONLY);
-    if (src == -1) {
-        perror("smash error: open failed");
-        return;
-    }
-    int dst = open(path2.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (dst == -1) {
-        perror("smash error: open failed");
-        return;
-    }
 
     if (cppid == 0) {// son
         setpgrp();
@@ -695,26 +726,36 @@ void CopyCommand::execute() {
         int bytesRead = read(src, buf, SIZE_TO_READ);
         if (bytesRead == -1) {
             perror("smash error: read failed");
-            return;
+            close(src);
+            close(dst);
+            exit(2);
         }
         while (bytesRead != 0) {
             if (write(dst, buf, bytesRead) == -1) {
                 perror("smash error: write failed");
-                return;
+                close(src);
+                close(dst);
+                exit(2);
             }
             bytesRead = read(src, buf, SIZE_TO_READ);
             if (bytesRead == -1) {
                 perror("smash error: read failed");
-                return;
+                close(src);
+                close(dst);
+                exit(2);
             }
         }
         delete[] buf;
-        string print = "smash " + path1 + " was copied to " + path2 + "\n";
+        string print = "smash: " + path1 + " was copied to " + path2 + "\n";
         write(out, print.c_str(), print.size());
+        close(src);
+        close(dst);
         exit(2);
     } else if (!bg) { //father
         waitpid(cppid, nullptr, WUNTRACED);
         smash->setNulls();
+        close(src);
+        close(dst);
     }
 }
 
@@ -753,6 +794,7 @@ void ExternalCommand::execute() {
     if (extCommFromRed != nullptr && _isBackgroundComamnd(extCommFromRed->cmd_line))
         bg = true;
     smash->setCommand(this);
+
     pid_t extpid = fork();
     smash->setPidInFG(extpid);
     string temp;
@@ -804,6 +846,7 @@ void PipeCommand::execute() {
     smash->setCommand(this);
     pid_t pid1 = fork();
     if (pid1 == 0) { //son
+        setpgid(pid1, 0);
         close(fd[0]);
         cmd1->execute();
         close(fd[1]);
@@ -812,28 +855,27 @@ void PipeCommand::execute() {
         close(fd[1]);
         pid_t pid2 = fork();
         if (pid2 == 0) {
-            setpgid(pid1, 0);
+            setpgid(pid2, pid1);
             cmd2->execute();
             close(fd[0]);
             exit(2);
         } else {
-            if (setpgid(pid1, 0) != 0) {
-                perror("setpgid() error");
-                return;
-            }
-            if (setpgid(pid2, getpgid(pid1)) != 0) {
-                perror("setpgid() error");
-                return;
-            }
+            /*    if (setpgid(pid2, 0) != 0) {
+                    perror("setpgid() error");
+                    return;
+                }
+                if (setpgid(pid1, 0) != 0) {
+                    perror("setpgid() error");
+                    return;
+                }*/
             close(fd[0]);
             if (!_isBackgroundComamnd(cmd_line)) {
-
                 smash->setPidInFG(pid1);
                 waitpid(pid1, nullptr, WUNTRACED);
                 waitpid(pid2, nullptr, WUNTRACED);
                 smash->setNulls();
             } else {
-                smash->jobs->addJob(this, pid1, 1, true);
+                smash->jobs->addJob(this, pid1, 1, true, 2);
                 smash->setNulls();
             }
         }
@@ -854,6 +896,7 @@ void TimeoutCommand::execute() {
     if (tmpid == 0) {//son
         setpgrp();
         actual_cmd->execute();
+        exit(2);
     } else if (!bg) { //father
         waitpid(tmpid, nullptr, WUNTRACED);
         smash->setNulls();

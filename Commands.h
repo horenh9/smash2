@@ -52,6 +52,7 @@ public:
 
     public:
         bool isPipe;
+        int counter;
 
         int getJobId() const;
 
@@ -79,7 +80,7 @@ public:
 
     ~JobsList();
 
-    int addJob(Command *cmd, int pid, int mode, bool isPiped = false);
+    int addJob(Command *cmd, int pid, int mode, bool isPiped = false, int counter = 0);
 
     void addJob(JobEntry *job);
 
@@ -269,7 +270,7 @@ class SmallShell {
     pid_t curr_pid;
     Command *currcmd;
     JobsList::JobEntry *currjob;
-    int out;
+    int out{};
 
 public:
     JobsList *jobs;
