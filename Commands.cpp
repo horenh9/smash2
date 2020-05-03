@@ -27,7 +27,8 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 
 
 /******************** Getters/Setters************/
-time_com::time_com(int pid, int duration, time_t start, string command) : pid(pid), duration(duration), start(start),command(command) {}
+time_com::time_com(int pid, int duration, time_t start, string command) : pid(pid), duration(duration), start(start),
+                                                                          command(command) {}
 
 string *Command::getJob() const {
     return cmd;
@@ -254,11 +255,13 @@ void SmallShell::ReAlarm() {
         next_alarm_pid = 0;
 }
 
-string SmallShell::getTimeCommandByPid(pid_t pid){
+string SmallShell::getTimeCommandByPid(pid_t pid) {
     for (auto it = timeoutlist->begin(); it != timeoutlist->end(); ++it)
         if (it->pid == pid)
             return it->command;
+    return nullptr;
 }
+
 /******************** Jobs ************/
 
 JobsList::JobsList() : max(0) {
@@ -575,14 +578,14 @@ void KillCommand::execute() {
     jobs->removeFinishedJobs();
     try {
         int id = stoi(cmd[2]);
-        if (jobs->getJobById(id) == nullptr) {
-            string print = "smash error: kill: job-id " + cmd[2] + " does not exist\n";
-            write_to(print, out);
-            return;
-        }
         int sigNum = stoi(cmd[1].substr(1, cmd[1].length() - 1));
         if (cmd[1].at(0) != '-' || !cmd[3].empty()) {
             string print = "smash error: kill: invalid arguments\n";
+            write_to(print, out);
+            return;
+        }
+        if (jobs->getJobById(id) == nullptr) {
+            string print = "smash error: kill: job-id " + cmd[2] + " does not exist\n";
             write_to(print, out);
             return;
         }
@@ -915,7 +918,7 @@ void TimeoutCommand::execute() {
     bool bg = _isBackgroundComamnd(cmd_line);
     smash->setCommand(this);
     int tmpid = fork();
-    time_com commdata = time_com(tmpid, duration, time(nullptr),cmd_line);
+    time_com commdata = time_com(tmpid, duration, time(nullptr), cmd_line);
     smash->timeoutlist->push_back(commdata);
     smash->ReAlarm();
     smash->setPidInFG(tmpid);
