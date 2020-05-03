@@ -27,6 +27,7 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 
 
 /******************** Getters/Setters************/
+time_com::time_com(int pid, int duration, time_t start, string command) : pid(pid), duration(duration), start(start),command(command) {}
 
 string *Command::getJob() const {
     return cmd;
@@ -138,7 +139,6 @@ bool _isBackgroundComamnd(const string &cmd_line) {
     return str[str.find_last_not_of(WHITESPACE)] == '&';
 }
 
-
 void arrange_cmd_redirection(string cmd_line, string *actual_cmd, string *file) {
     string temp = _trim(cmd_line);
     if (_isBackgroundComamnd(temp))
@@ -176,10 +176,12 @@ SmallShell::SmallShell() : curr_pid(-1), currcmd(nullptr), currjob(nullptr) {
     jobs = new JobsList();
     plastPwd = "";
     pid = getpid();
+    timeoutlist = new list<time_com>();
 }
 
 SmallShell::~SmallShell() {
     delete jobs;
+    delete timeoutlist;
 }
 
 Command *SmallShell::CreateCommand(const string &cmd_line, int out, int in, int err) {
@@ -234,7 +236,29 @@ void SmallShell::setNulls(bool b) {
         setOut(1);
 }
 
+void SmallShell::ReAlarm() {
+    double closest = 0;
+    int alarmpid = 0;
+    double temp;
+    for (auto &it : *timeoutlist) {//find the next alarm
+        temp = it.duration - difftime(time(nullptr), it.start);
+        if (temp < closest || closest == 0) {
+            closest = temp;
+            alarmpid = it.pid;
+        }
+    }
+    if (alarmpid != 0) {
+        next_alarm_pid = alarmpid;
+        alarm(closest);
+    } else
+        next_alarm_pid = 0;
+}
 
+string SmallShell::getTimeCommandByPid(pid_t pid){
+    for (auto it = timeoutlist->begin(); it != timeoutlist->end(); ++it)
+        if (it->pid == pid)
+            return it->command;
+}
 /******************** Jobs ************/
 
 JobsList::JobsList() : max(0) {
@@ -383,7 +407,7 @@ Command::~Command() {
 
 ExternalCommand::ExternalCommand(const string &cmd_line, JobsList *jobs, SmallShell *smash, int out, int in, int err,
                                  bool piped) : Command(cmd_line, out, in, err), jobs(jobs), smash(smash),
-                                               isPiped(piped), extCommFromRed(nullptr)  {}
+                                               isPiped(piped), extCommFromRed(nullptr) {}
 
 RedirectionCommand::RedirectionCommand(const string &cmd_line, SmallShell *smash) : Command(cmd_line), smash(smash) {
 }
@@ -407,6 +431,11 @@ TimeoutCommand::TimeoutCommand(const string &cmd_line, SmallShell *smash, JobsLi
     try {
         duration = stoi(cmd[1]);
     } catch (...) {
+        string print = "smash error: timeout: invalid arguments\n";
+        write_to(print, out);
+        return;
+    }
+    if (duration <= 0 || cmd[2].empty()) {
         string print = "smash error: timeout: invalid arguments\n";
         write_to(print, out);
         return;
@@ -552,18 +581,25 @@ void KillCommand::execute() {
             return;
         }
         int sigNum = stoi(cmd[1].substr(1, cmd[1].length() - 1));
-        if (cmd[1].at(0) != '-' || !cmd[3].empty() || sigNum < 0 || sigNum > 31) {
+        if (cmd[1].at(0) != '-' || !cmd[3].empty()) {
             string print = "smash error: kill: invalid arguments\n";
             write_to(print, out);
             return;
         }
-        string print = "signal number " + to_string(sigNum) + " was sent to pid "
-                       + to_string(jobs->getJobById(id)->getPid()) + "\n";
-        write_to(print, out);
+
+        int c;
         if (jobs->getJobById(id)->isPipe)
-            killpg(jobs->getJobById(id)->getPid(), stoi(cmd[1].substr(1, cmd[1].length() - 1)));
+            c = killpg(jobs->getJobById(id)->getPid(), stoi(cmd[1].substr(1, cmd[1].length() - 1)));
         else
-            kill(jobs->getJobById(id)->getPid(), stoi(cmd[1].substr(1, cmd[1].length() - 1)));
+            c = kill(jobs->getJobById(id)->getPid(), stoi(cmd[1].substr(1, cmd[1].length() - 1)));
+        if (c == -1)
+            perror("smash error: kill failed");
+        else {
+            string print = "signal number " + to_string(sigNum) + " was sent to pid "
+                           + to_string(jobs->getJobById(id)->getPid()) + "\n";
+            write_to(print, out);
+        }
+
     }
     catch (...) {
         string print = "smash error: kill: invalid arguments\n";
@@ -783,6 +819,7 @@ void RedirectionCommand::execute() {
         ext->execute();
     } else
         comm->execute();
+    fflush(stdout);
     if (close(fd) == -1)
         perror("smash error: close failed");
     smash->setOut(1);
@@ -860,14 +897,6 @@ void PipeCommand::execute() {
             close(fd[0]);
             exit(2);
         } else {
-            /*    if (setpgid(pid2, 0) != 0) {
-                    perror("setpgid() error");
-                    return;
-                }
-                if (setpgid(pid1, 0) != 0) {
-                    perror("setpgid() error");
-                    return;
-                }*/
             close(fd[0]);
             if (!_isBackgroundComamnd(cmd_line)) {
                 smash->setPidInFG(pid1);
@@ -884,17 +913,22 @@ void PipeCommand::execute() {
 
 void TimeoutCommand::execute() {
     bool bg = _isBackgroundComamnd(cmd_line);
-    alarm(duration);
     smash->setCommand(this);
     int tmpid = fork();
+    time_com commdata = time_com(tmpid, duration, time(nullptr),cmd_line);
+    smash->timeoutlist->push_back(commdata);
+    smash->ReAlarm();
     smash->setPidInFG(tmpid);
     if (bg) {
         smash->setNulls(false);
         jobs->addJob(this, tmpid, 1);
     }
+    ExternalCommand *ext = dynamic_cast<ExternalCommand *>(actual_cmd);
+    if (ext)
+        ext->isPiped = true;
 
     if (tmpid == 0) {//son
-        setpgrp();
+        setpgid(tmpid, 0);
         actual_cmd->execute();
         exit(2);
     } else if (!bg) { //father

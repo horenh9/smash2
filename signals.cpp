@@ -43,13 +43,18 @@ void ctrlCHandler(int sig_num) {
 
 void alarmHandler(int sig_num) {
     SmallShell &smash = SmallShell::getInstance();
-    string print = "smash got an alarm\n";
-    write_to(print, smash.getOut());
-    if (smash.getPidInFG() != -1) {
-        killpg(smash.getPidInFG(), SIGKILL);
-        cout << "smash: " << smash.getCommand()->getJob() << " timed out!" << endl;
+    string print = "smash got an alarm";
+    cout << print << endl;
+    if (smash.next_alarm_pid != 0) {
+        int x = killpg(smash.next_alarm_pid, SIGKILL);
+        if (x != -1)
+            cout << "smash: " << smash.getTimeCommandByPid(smash.next_alarm_pid) << " timed out!" << endl;
+        for (auto it = smash.timeoutlist->begin(); it != smash.timeoutlist->end(); ++it) {
+            if (it->pid == smash.next_alarm_pid) {
+                smash.timeoutlist->erase(it);
+                break;
+            }
+        }
     }
-    smash.setNulls();
+    smash.ReAlarm();
 }
-
-//cp /dev/zero /dev/null

@@ -19,6 +19,16 @@ class JobsList;
 
 class SmallShell;
 
+class time_com{
+public:
+    int pid;
+
+    int duration;
+    time_t start;
+    string command;
+    time_com(int pid, int duration, time_t start,string command);
+};
+
 class Command {
 protected:
     string *cmd;
@@ -271,10 +281,12 @@ class SmallShell {
     Command *currcmd;
     JobsList::JobEntry *currjob;
     int out{};
-
 public:
-    JobsList *jobs;
 
+    pid_t next_alarm_pid;
+    list<time_com> *timeoutlist;
+    void ReAlarm();
+    JobsList *jobs;
     string prompt_name;
 
     SmallShell();
@@ -313,6 +325,8 @@ public:
     void executeCommand(const string &cmd_line);
 
     void setNulls(bool out = true);
+
+    string getTimeCommandByPid(pid_t pid);
 };
 
 #endif //SMASH_COMMAND_H_
