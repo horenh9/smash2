@@ -8,18 +8,22 @@
 using namespace std;
 
 void ctrlZHandler(int sig_num) {
+    bool ispiped = false;
+    int countforpipe = 0;
     SmallShell &smash = SmallShell::getInstance();
     string print = "smash: got ctrl-Z";
     cout << print << endl;
     if (smash.getPidInFG() != -1) {
-        if (dynamic_cast<PipeCommand *>(smash.getCommand()))
+        if (dynamic_cast<PipeCommand *>(smash.getCommand())) {
             killpg(smash.getPidInFG(), SIGSTOP);
-        else
+            ispiped = true;
+            countforpipe = 2;
+        } else
             kill(smash.getPidInFG(), SIGSTOP);
         if (smash.getJob())
             smash.jobs->addJob(smash.getJob());
         else
-            smash.jobs->addJob(smash.getCommand(), smash.getPidInFG(), 0);
+            smash.jobs->addJob(smash.getCommand(), smash.getPidInFG(), 0, ispiped, countforpipe);
         print = "smash: process " + to_string(smash.getPidInFG()) + " was stopped";
         cout << print << endl;
     }

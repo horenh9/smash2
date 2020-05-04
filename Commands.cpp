@@ -294,9 +294,9 @@ void JobsList::printJobsList(int out) {
         double diff = difftime(time(nullptr), it.getBegin());
         string mode = "";
         if (it.getMode() == 0)
-            mode = "(stopped)";
+            mode = " (stopped)";
         string print = "[" + to_string(it.getJobId()) + "] " + it.getJob() + " : " + to_string(it.getPid()) + " " +
-                       to_string(int(diff)) + " secs " + mode + "\n";
+                       to_string(int(diff)) + " secs" + mode + "\n";
         write_to(print, out);
     }
 }
@@ -383,15 +383,16 @@ JobsList::JobEntry *JobsList::getLastStoppedJob(int *jobId) {
 }
 
 void JobsList::addJob(JobEntry *job) {
+    job->setMode(0);
+    job->restartTime();
     for (auto it = jobs_list->begin(); it != jobs_list->end(); ++it) {
-        if (it->getJobId() < job->getJobId() && (it++) != jobs_list->end() && it->getJobId() > job->getJobId()) {
-            job->setMode(0);
-            job->restartTime();
-            jobs_list->insert(it, *job);
+        if (it->getJobId() < job->getJobId() && it++ != jobs_list->end() && it->getJobId() > job->getJobId()) {
+            jobs_list->insert(it++, *job);
             return;
         }
         it--;
     }
+    jobs_list->insert(jobs_list->end(), *job);
 }
 
 /******************** Command Constructors & Destructors************/
@@ -885,8 +886,8 @@ void PipeCommand::execute() {
         ext2->isPiped = true;
     smash->setCommand(this);
     pid_t pid1 = fork();
+    setpgid(pid1, 0);
     if (pid1 == 0) { //son
-        setpgid(pid1, 0);
         close(fd[0]);
         cmd1->execute();
         close(fd[1]);
