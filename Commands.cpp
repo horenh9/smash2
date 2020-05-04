@@ -666,6 +666,7 @@ void ForegroundCommand::execute() {
         write_to(print, err);
     }
 }
+//
 
 void BackgroundCommand::execute() {
     jobs->removeFinishedJobs();
